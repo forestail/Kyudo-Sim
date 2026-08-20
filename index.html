@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>KYUDO — Three.js MVP v4.2</title>
+<style>
+  :root{
+    --ink:#ece9df;
+    --muted:#aaa69c;
+    --line:rgba(255,255,255,.16);
+    --glass:rgba(16,18,17,.62);
+  }
+  *{box-sizing:border-box}
+  html,body{
+    width:100%;height:100%;margin:0;overflow:hidden;background:#171b1a;color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif
+  }
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #hud{position:fixed;inset:0;pointer-events:none;user-select:none}
+  .brand{
+    position:absolute;top:max(18px,env(safe-area-inset-top));left:max(20px,env(safe-area-inset-left));
+    letter-spacing:.18em;font-weight:650;font-size:13px;text-shadow:0 1px 12px #000
+  }
+  .brand small{display:block;margin-top:5px;letter-spacing:.08em;font-size:10px;font-weight:500;color:var(--muted)}
+  #shots{
+    position:absolute;top:max(18px,env(safe-area-inset-top));right:max(20px,env(safe-area-inset-right));
+    display:flex;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--line);
+    border-radius:999px;background:var(--glass);backdrop-filter:blur(10px)
+  }
+  .shot{width:10px;height:10px;border:1px solid rgba(255,255,255,.5);border-radius:50%;position:relative}
+  .shot.hit::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--ink)}
+  .shot.miss::after{content:"";position:absolute;left:1px;right:1px;top:4px;height:1px;background:#bfb9ae;transform:rotate(-45deg)}
+
+  #matoPanel{
+    position:absolute;
+    top:max(88px,calc(env(safe-area-inset-top) + 70px));
+    right:max(20px,env(safe-area-inset-right));
+    width:132px;
+    padding:10px 10px 9px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:var(--glass);
+    backdrop-filter:blur(10px);
+    text-align:center;
+  }
+  #matoLabel{
+    font-size:9px;
+    letter-spacing:.18em;
+    color:#c7c2b8;
+    margin-bottom:8px;
+  }
+  #miniMato{
+    position:relative;
+    width:106px;
+    height:106px;
+    margin:auto;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at center,
+        #efede4 0 8.7%,
+        #171816 8.7% 19.5%,
+        #efede4 19.5% 30.3%,
+        #171816 30.3% 41.0%,
+        #efede4 41.0% 50.0%,
+        #d8d3c7 50.0% 51.5%,
+        transparent 51.5%);
+    filter:drop-shadow(0 2px 5px rgba(0,0,0,.22));
+  }
+  .matoMark{
+    position:absolute;
+    width:10px;
+    height:10px;
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+  }
+  .matoMark::before,
+  .matoMark::after{
+    content:"";
+    position:absolute;
+    left:4px;
+    top:0;
+    width:2px;
+    height:10px;
+    border-radius:2px;
+    background:#b43e32;
+    box-shadow:0 0 2px rgba(255,255,255,.45);
+  }
+  .matoMark::before{transform:rotate(45deg)}
+  .matoMark::after{transform:rotate(-45deg)}
+  #matoCount{
+    margin-top:7px;
+    font-size:10px;
+    color:#c7c2b8;
+    letter-spacing:.08em;
+  }
+
+  #status{
+    position:absolute;top:13%;left:50%;transform:translateX(-50%);text-align:center;
+    text-shadow:0 2px 18px rgba(0,0,0,.85);min-width:290px
+  }
+  #statusMain{
+    font-family:"Yu Mincho","Hiragino Mincho ProN",serif;font-size:clamp(22px,4vw,42px);
+    letter-spacing:.22em;opacity:.95
+  }
+  #statusSub{margin-top:8px;font-size:11px;letter-spacing:.12em;color:#c9c5bc}
+  #drawWrap{
+    position:absolute;left:50%;bottom:max(92px,calc(env(safe-area-inset-bottom) + 74px));
+    transform:translateX(-50%);width:min(360px,74vw);opacity:0;transition:opacity .2s
+  }
+  #drawTrack{height:2px;background:rgba(255,255,255,.18);overflow:hidden}
+  #drawFill{height:100%;width:0;background:var(--ink);box-shadow:0 0 12px rgba(255,255,255,.45)}
+  #drawLabel{text-align:center;font-size:10px;margin-top:8px;letter-spacing:.16em;color:#c7c3b9}
+  #hint{
+    position:absolute;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
+    width:min(760px,calc(100vw - 32px));padding:12px 16px;text-align:center;font-size:12px;line-height:1.6;
+    color:#d0ccc2;border:1px solid var(--line);border-radius:10px;background:rgba(12,14,13,.48);
+    backdrop-filter:blur(8px)
+  }
+  #result{
+    position:absolute;inset:0;display:none;place-items:center;background:rgba(8,10,9,.48);pointer-events:auto;
+    backdrop-filter:blur(4px)
+  }
+  .card{
+    width:min(420px,calc(100vw - 36px));padding:30px 26px;text-align:center;border:1px solid rgba(255,255,255,.18);
+    border-radius:18px;background:rgba(20,23,21,.88);box-shadow:0 24px 80px rgba(0,0,0,.38)
+  }
+  .card .kicker{font-size:10px;letter-spacing:.22em;color:#aaa69c}
+  #resultTitle{font-family:"Yu Mincho","Hiragino Mincho ProN",serif;font-size:42px;letter-spacing:.18em;margin:10px 0 4px}
+  #resultScore{font-size:13px;color:#cbc7bd;margin-bottom:22px}
+  #restart{
+    pointer-events:auto;border:1px solid rgba(255,255,255,.25);background:transparent;color:var(--ink);
+    font:inherit;font-size:12px;letter-spacing:.14em;padding:12px 24px;border-radius:999px;cursor:pointer
+  }
+  #restart:hover{background:rgba(255,255,255,.08)}
+  #flash{
+    position:absolute;inset:0;opacity:0;pointer-events:none;
+    background:radial-gradient(circle at 50% 46%,rgba(255,244,209,.16),transparent 24%)
+  }
+  #vignette{
+    position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(circle at center,transparent 47%,rgba(0,0,0,.42) 100%);opacity:.55
+  }
+  #releaseMark{
+    position:absolute;left:50%;top:50%;width:9px;height:9px;border:1px solid rgba(255,255,255,.22);
+    border-radius:50%;transform:translate(-50%,-50%) scale(1);opacity:0
+  }
+  #centerCall{
+    position:absolute;left:50%;top:47%;transform:translate(-50%,-50%);
+    font-family:"Yu Mincho","Hiragino Mincho ProN",serif;
+    font-size:clamp(38px,7vw,88px);letter-spacing:.16em;
+    color:#fff9ed;text-shadow:0 2px 24px rgba(0,0,0,.9),0 0 28px rgba(255,243,212,.25);
+    opacity:0;white-space:nowrap
+  }
+  #centerSub{
+    position:absolute;left:50%;top:56%;transform:translate(-50%,-50%);
+    font-size:clamp(12px,2vw,18px);letter-spacing:.18em;color:#f2ecdf;
+    opacity:0;text-shadow:0 2px 18px rgba(0,0,0,.9);white-space:nowrap
+  }
+  @media (max-width:700px){
+    #hint{font-size:11px}
+    .brand small{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="brand">KYUDO <small>近的 28m / 36cm 霞的 — 狙い幅・散り調整版</small></div>
+  <div id="shots">
+    <span class="shot" id="s0"></span><span class="shot" id="s1"></span>
+    <span class="shot" id="s2"></span><span class="shot" id="s3"></span>
+  </div>
+  <div id="matoPanel">
+    <div id="matoLabel">矢 所</div>
+    <div id="miniMato"></div>
+    <div id="matoCount">0 / 4</div>
+  </div>
+  <div id="status"><div id="statusMain">一射目</div><div id="statusSub">的を見て、静かに引く</div></div>
+  <div id="drawWrap"><div id="drawTrack"><div id="drawFill"></div></div><div id="drawLabel">引分け</div></div>
+  <div id="hint">打起しから引分ける。矢は基本的に的の周辺へ飛び、相対ドラッグでその中の細かな着弾位置を上下左右に調整します。会を長く安定させるほど矢所がまとまります。</div>
+  <div id="flash"></div><div id="vignette"></div><div id="releaseMark"></div>
+  <div id="centerCall"></div><div id="centerSub"></div>
+  <div id="result"><div class="card">
+    <div class="kicker">四射終了</div>
+    <div id="resultTitle">射了</div>
+    <div id="resultScore"></div>
+    <button id="restart">もう一度射る</button>
+  </div></div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x879186);
+scene.fog = new THREE.Fog(0x879186, 20, 48);
+
+const camera = new THREE.PerspectiveCamera(47, innerWidth/innerHeight, 0.05, 80);
+const CAMERA_BASE = new THREE.Vector3(0.02, 1.58, 3.7);
+camera.position.copy(CAMERA_BASE);
+camera.lookAt(0, 1.56, -28);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+document.body.prepend(renderer.domElement);
+
+// ---------- Lights ----------
+scene.add(new THREE.HemisphereLight(0xe8eee5, 0x3c433c, 1.75));
+const sun = new THREE.DirectionalLight(0xfff3da, 2.15);
+sun.position.set(-5, 10, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-12; sun.shadow.camera.right=12; sun.shadow.camera.top=12; sun.shadow.camera.bottom=-12;
+scene.add(sun);
+
+// ---------- Materials ----------
+const matWood = new THREE.MeshStandardMaterial({color:0x5d4430, roughness:.82});
+const matDarkWood = new THREE.MeshStandardMaterial({color:0x35281f, roughness:.88});
+const matFloor = new THREE.MeshStandardMaterial({color:0x756b58, roughness:1});
+const matGrass = new THREE.MeshStandardMaterial({color:0x5f715c, roughness:1});
+const matWall = new THREE.MeshStandardMaterial({color:0xddd8c8, roughness:.95});
+const matArrow = new THREE.MeshStandardMaterial({color:0xc8b48d, roughness:.65});
+const matFeather = new THREE.MeshStandardMaterial({color:0xeeeae0, roughness:.9, side:THREE.DoubleSide});
+const matSkin = new THREE.MeshStandardMaterial({color:0xc59272, roughness:.86});
+const matYugake = new THREE.MeshStandardMaterial({color:0x9b7047, roughness:.92});
+const matGi = new THREE.MeshStandardMaterial({color:0xe4e1d8, roughness:.95});
+const matGiShadow = new THREE.MeshStandardMaterial({color:0xcac6bb, roughness:.98});
+
+// ---------- Ground / dojo ----------
+const grass = new THREE.Mesh(new THREE.PlaneGeometry(32, 55), matGrass);
+grass.rotation.x = -Math.PI/2; grass.position.set(0,0,-12); grass.receiveShadow=true; scene.add(grass);
+
+const floor = new THREE.Mesh(new THREE.BoxGeometry(7.8,.12,5.8), matFloor);
+floor.position.set(0,.07,2.2); floor.receiveShadow=true; scene.add(floor);
+
+const back = new THREE.Mesh(new THREE.BoxGeometry(8,3.6,.16), matDarkWood);
+back.position.set(0,1.8,5.05); back.receiveShadow=true; scene.add(back);
+
+for(let x=-3.5;x<=3.5;x+=1.75){
+  const post=new THREE.Mesh(new THREE.BoxGeometry(.12,3.7,.12),matWood);
+  post.position.set(x,1.85,4.9); scene.add(post);
+}
+const roof = new THREE.Mesh(new THREE.BoxGeometry(8.7,.16,3.2), matDarkWood);
+roof.position.set(0,3.65,3.4); roof.rotation.x=.02; scene.add(roof);
+
+const lane = new THREE.Mesh(new THREE.PlaneGeometry(4.2,31.5), new THREE.MeshStandardMaterial({color:0x7c856f,roughness:1}));
+lane.rotation.x=-Math.PI/2; lane.position.set(0,.012,-12.4); scene.add(lane);
+
+const azuchi = new THREE.Mesh(new THREE.BoxGeometry(7,2.7,1.1), new THREE.MeshStandardMaterial({color:0x8e8167,roughness:1}));
+azuchi.position.set(0,1.35,-28.55); azuchi.rotation.x=-.04; azuchi.receiveShadow=true; scene.add(azuchi);
+
+const targetWall = new THREE.Mesh(new THREE.BoxGeometry(7.6,3.25,.18), matWall);
+targetWall.position.set(0,1.62,-29.18); scene.add(targetWall);
+
+const eave = new THREE.Mesh(new THREE.BoxGeometry(8.1,.18,1.9),matDarkWood);
+eave.position.set(0,3.28,-28.55); scene.add(eave);
+
+// ---------- Target ----------
+const TARGET_Z = -27.92;
+const TARGET_Y = 1.02;
+const TARGET_R = 0.20;
+
+const targetGroup = new THREE.Group();
+targetGroup.position.set(0,TARGET_Y,TARGET_Z);
+
+function disc(r, color, z){
+  const mat = new THREE.MeshStandardMaterial({color,roughness:.78,emissive:0x000000});
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,.012,64), mat);
+  m.rotation.x=Math.PI/2; m.position.z=z;
+  targetGroup.add(m);
+  return m;
+}
+const targetDiscs = [
+  disc(.21,0xe7e1d2,0),
+  disc(.172,0x161615,.008),
+  disc(.128,0xf1eee5,.017),
+  disc(.082,0x181816,.026),
+  disc(.037,0xefede4,.035),
+];
+const rim = new THREE.Mesh(new THREE.TorusGeometry(.21,.011,10,64),matDarkWood);
+rim.position.z=.045; targetGroup.add(rim);
+scene.add(targetGroup);
+
+let impactRings = [];
+function spawnImpactRing(pos, hit){
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(hit ? .02 : .015, .004, 8, 28),
+    new THREE.MeshBasicMaterial({color: hit ? 0xfff2cf : 0x9f9278, transparent:true, opacity:.95})
+  );
+  ring.position.set(pos.x, pos.y, TARGET_Z + .06);
+  ring.rotation.x = Math.PI/2;
+  ring.userData = { life:.45, scale:1, hit };
+  scene.add(ring);
+  impactRings.push(ring);
+}
+
+// ---------- Bow ----------
+const BOW_HOME = new THREE.Vector3(-.21,1.46,2.38);
+const UCHIOKOSHI_GRIP_Y = 2.12;
+const UCHIOKOSHI_BOW_Z = 2.62;
+
+function drawPoseEase(d){
+  // The arms remain high early, then descend through dai-san / hikiwake.
+  return d*d*(3-2*d);
+}
+
+function bowPosePosition(d){
+  const p=drawPoseEase(d);
+  return new THREE.Vector3(
+    BOW_HOME.x + p*.025,
+    THREE.MathUtils.lerp(UCHIOKOSHI_GRIP_Y, BOW_HOME.y, p),
+    THREE.MathUtils.lerp(UCHIOKOSHI_BOW_Z, BOW_HOME.z-.02, p)
+  );
+}
+
+const bowRoot = new THREE.Group();
+bowRoot.position.copy(bowPosePosition(0));
+scene.add(bowRoot);
+
+const bowVisual = new THREE.Group();
+bowRoot.add(bowVisual);
+
+const grip = new THREE.Mesh(
+  new THREE.CylinderGeometry(.032,.032,.19,12),
+  new THREE.MeshStandardMaterial({color:0x27231e,roughness:.92})
+);
+grip.position.set(-.02,0,.005);
+grip.rotation.z=.06;
+bowVisual.add(grip);
+
+// A yumi is not a symmetric Western bow.  The grip sits well below the
+// geometric centre, with a short lower limb and a much longer upper limb.
+// These points also give it the gentle, characteristic Japanese yumi profile
+// rather than a strongly recurved Western-bow silhouette.
+const baseBowPts = [
+  new THREE.Vector3(.060,-.82,-.010),  // lower tip
+  new THREE.Vector3(.018,-.70,.006),
+  new THREE.Vector3(-.038,-.55,.012),
+  new THREE.Vector3(-.056,-.36,.006),
+  new THREE.Vector3(-.034,-.18,-.004),
+  new THREE.Vector3(-.012,-.06,-.006),
+  new THREE.Vector3(0.000, 0.00,0.000), // grip
+  new THREE.Vector3(.018, .20,-.006),
+  new THREE.Vector3(.050, .46,-.012),
+  new THREE.Vector3(.071, .75,-.010),
+  new THREE.Vector3(.066,1.02,.002),
+  new THREE.Vector3(.042,1.27,.014),
+  new THREE.Vector3(.008,1.48,.022),
+  new THREE.Vector3(-.024,1.64,.020),
+  new THREE.Vector3(-.045,1.74,.010)    // upper tip
+];
+
+// A flattened rectangular cross section reads much more like a yumi than
+// TubeGeometry's round "tree branch" cross section.
+const bowMaterial = new THREE.MeshStandardMaterial({
+  color:0x75451f,
+  roughness:.64,
+  metalness:0
+});
+const bowSegments = [];
+const BOW_SEGMENTS = 34;
+
+for(let i=0;i<BOW_SEGMENTS;i++){
+  const seg = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), bowMaterial);
+  seg.castShadow = true;
+  bowVisual.add(seg);
+  bowSegments.push(seg);
+}
+
+// Thin dark backing line gives the laminated bow a little visual depth.
+const bowBackMaterial = new THREE.MeshStandardMaterial({
+  color:0x3b2718,
+  roughness:.72
+});
+const bowBackSegments = [];
+for(let i=0;i<BOW_SEGMENTS;i++){
+  const seg = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), bowBackMaterial);
+  seg.castShadow = true;
+  bowVisual.add(seg);
+  bowBackSegments.push(seg);
+}
+
+let stringLine = null;
+let currentBowFlex = -1;
+
+function composeBowPts(flex){
+  return baseBowPts.map((p) => {
+    const q = p.clone();
+
+    // Each limb bends toward the archer (+Z), while the grip itself stays stable.
+    // Using the physical distance from the grip preserves the yumi's asymmetric
+    // upper/lower limb proportions even when flexed.
+    const upper = q.y >= 0;
+    const limbLen = upper ? 1.74 : .82;
+    const limb = THREE.MathUtils.clamp(Math.abs(q.y) / limbLen, 0, 1);
+    const bend = Math.sin(limb * Math.PI * .5);
+
+    q.z += flex * bend * (upper ? .245 : .205);
+
+    // A very small lateral change helps the long upper limb keep the elegant
+    // yumi silhouette without turning it into a Western recurve.
+    q.x += flex * Math.sin(limb*Math.PI) * (upper ? -.010 : .008);
+
+    return q;
+  });
+}
+
+function segmentWidthAt(t){
+  // Wider around the grip/inner limbs, tapering toward both tips.
+  const y = THREE.MathUtils.lerp(-.82, 1.74, t);
+  const limbLen = y >= 0 ? 1.74 : .82;
+  const limb = Math.min(1, Math.abs(y)/limbLen);
+  return THREE.MathUtils.lerp(.030, .012, Math.pow(limb,.72));
+}
+
+function updateBowGeometry(flex){
+  if(Math.abs(flex-currentBowFlex) < .003) return;
+  currentBowFlex = flex;
+
+  const curve = new THREE.CatmullRomCurve3(composeBowPts(flex));
+  const pts = curve.getPoints(BOW_SEGMENTS);
+
+  for(let i=0;i<BOW_SEGMENTS;i++){
+    const a = pts[i], b = pts[i+1];
+    const d = b.clone().sub(a);
+    const len = d.length();
+    const mid = a.clone().add(b).multiplyScalar(.5);
+    const t = (i+.5)/BOW_SEGMENTS;
+    const w = segmentWidthAt(t);
+
+    const seg = bowSegments[i];
+    seg.position.copy(mid);
+    seg.scale.set(w, len*1.04, .015);
+    seg.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), d.clone().normalize());
+
+    // Lamination/backing strip, slightly behind the main face.
+    const back = bowBackSegments[i];
+    back.position.copy(mid);
+    back.position.z += .010;
+    back.scale.set(w*.42, len*1.045, .005);
+    back.quaternion.copy(seg.quaternion);
+  }
+}
+
+function nockLocal(drawAmount){
+  // Desired path of the hand-held nock.
+  // It starts almost straight backward, then moves toward the right cheek/ear.
+  const side = THREE.MathUtils.smoothstep(drawAmount, .56, .98);
+  return new THREE.Vector3(
+    0.015 + side * .34,
+    0.07 + drawAmount * 0.025,
+    0.08 + drawAmount * 1.18
+  );
+}
+
+function updateString(drawAmount, bowFlex, ax=aimX, ay=aimY){
+  if(stringLine){
+    bowVisual.remove(stringLine);
+    stringLine.geometry.dispose();
+    stringLine.material.dispose();
+  }
+  const pts = composeBowPts(bowFlex);
+  const topTip = pts[pts.length - 1];
+  const botTip = pts[0];
+
+  // IMPORTANT:
+  // The string must always meet the actual displayed rear end of the arrow.
+  // Using an independent nockLocal(...) caused the string to drift away from
+  // the arrow's nock during deep hikiwake / kai.
+  const n = getReadyArrowNockLocal(drawAmount, ax, ay);
+
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(topTip.x, topTip.y, topTip.z),
+    n,
+    new THREE.Vector3(botTip.x, botTip.y, botTip.z)
+  ]);
+  stringLine = new THREE.Line(
+    geo,
+    new THREE.LineBasicMaterial({color:0xe7dfcf,transparent:true,opacity:.92})
+  );
+  bowVisual.add(stringLine);
+}
+
+function getNockWorld(drawAmount){
+  return bowVisual.localToWorld(nockLocal(drawAmount).clone());
+}
+
+// Point where the arrow rides on the left thumb beside the bow.
+// The ready arrow is always oriented from the nock through this point,
+// so the shaft cannot visually detach from the bow during hikiwake.
+function getArrowContactWorld(){
+  const p = new THREE.Vector3(
+    .052,   // just to the right of the bow/grip
+    .070,   // on top of the bow-hand thumb
+    -.035   // slightly target-side of the grip
+  );
+  return bowVisual.localToWorld(p);
+}
+
+function getAimPointWorld(ax=aimX, ay=aimY){
+  return new THREE.Vector3(ax, TARGET_Y + ay, TARGET_Z);
+}
+
+function getReadyArrowPose(drawAmount, ax=aimX, ay=aimY){
+  const desiredNock = getNockWorld(drawAmount);
+  const contact = getArrowContactWorld();
+
+  // Make orientation changes readable during aiming.  The actual shot uses a
+  // slightly gentler gain, but the preview arrow should clearly react to drag.
+  const visualAimPoint = getAimPointWorld(
+    ax * AIM_VISUAL_GAIN_X,
+    ay * AIM_VISUAL_GAIN_Y
+  );
+
+  // The shaft should visibly point toward the mato while still resting on
+  // the left-thumb contact point beside the bow.
+  const dir = visualAimPoint.clone().sub(contact).normalize();
+
+  // At deep hikiwake / kai, the nock and feathers must move behind the
+  // shooter's eyes so they leave the forward field of view.
+  const minRearDistance = THREE.MathUtils.lerp(.68, 1.78, drawAmount);
+  const rearDistance = Math.max(desiredNock.distanceTo(contact), minRearDistance);
+
+  const nock = contact.clone().addScaledVector(dir, -rearDistance);
+  return { nock, contact, aimPoint: visualAimPoint, dir, rearDistance };
+}
+
+function getReadyArrowNockLocal(drawAmount, ax=aimX, ay=aimY){
+  const pose = getReadyArrowPose(drawAmount, ax, ay);
+  return bowVisual.worldToLocal(pose.nock.clone());
+}
+
+// ---------- First-person arms ----------
+const shooter = new THREE.Group();
+scene.add(shooter);
+
+function makeSegment(material){
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,12),material);
+  mesh.castShadow=true;
+  shooter.add(mesh);
+  return mesh;
+}
+function placeSegment(mesh,a,b,rA=.07,rB=rA){
+  const d=b.clone().sub(a);
+  const len=d.length();
+  const mid=a.clone().add(b).multiplyScalar(.5);
+  mesh.position.copy(mid);
+  mesh.scale.set((rA+rB)*.5,len,(rA+rB)*.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.clone().normalize());
+}
+function makeFingerSegment(material, radius, length){
+  const m = new THREE.Mesh(
+    new THREE.CapsuleGeometry(radius, length, 6, 12),
+    material
+  );
+  m.castShadow=true;
+  return m;
+}
+
+function createHand(material, right=false){
+  const g = new THREE.Group();
+
+  // Palm / back of hand: overlapping rounded volumes give a much more
+  // anatomical silhouette than one sphere.
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(.073,24,18),material);
+  palm.scale.set(.92,.66,1.12);
+  palm.position.set(0,0,0);
+  palm.castShadow=true;
+  g.add(palm);
+
+  const thenar = new THREE.Mesh(new THREE.SphereGeometry(.040,18,14),material);
+  thenar.scale.set(.95,.75,1.10);
+  thenar.position.set(right ? .045 : -.045,-.010,.018);
+  thenar.castShadow=true;
+  g.add(thenar);
+
+  // Wrist transition.
+  const wrist = new THREE.Mesh(new THREE.CapsuleGeometry(.044,.045,6,12),material);
+  wrist.rotation.x=Math.PI/2;
+  wrist.position.z=.072;
+  wrist.castShadow=true;
+  g.add(wrist);
+
+  // Knuckles and 3 phalanges for each finger.
+  const fingerXs=[-.043,-.015,.015,.044];
+  const fingerLens=[.041,.047,.045,.038];
+  for(let i=0;i<4;i++){
+    const x=fingerXs[i];
+
+    const knuckle = new THREE.Mesh(new THREE.SphereGeometry(.017,14,10),material);
+    knuckle.scale.set(1,.88,1);
+    knuckle.position.set(x,.004,-.050);
+    knuckle.castShadow=true;
+    g.add(knuckle);
+
+    let parent=g;
+    let z=-.067;
+    let y=-.008;
+    for(let j=0;j<3;j++){
+      const len=fingerLens[i]*(j===0?1:(j===1?.82:.65));
+      const seg=makeFingerSegment(material,.0105-j*.0014,len);
+      seg.rotation.x=Math.PI/2 + (right ? -.08 : .13) + j*(right?.09:.18);
+      seg.rotation.z=(i-1.5)*.025;
+      seg.position.set(x,y,z);
+      parent.add(seg);
+      z -= len*.62;
+      y -= right ? .004 : .010;
+    }
+  }
+
+  // Thumb: two articulated pieces, extended along the bow/arrow side.
+  const thumbBase=makeFingerSegment(material,.014,.050);
+  thumbBase.rotation.z=right ? -.92 : .92;
+  thumbBase.rotation.x=.20;
+  thumbBase.position.set(right?.054:-.054,-.005,.000);
+  g.add(thumbBase);
+
+  const thumbTip=makeFingerSegment(material,.011,.040);
+  thumbTip.rotation.z=right ? -.72 : .72;
+  thumbTip.rotation.x=.38;
+  thumbTip.position.set(right?.083:-.083,-.018,-.020);
+  g.add(thumbTip);
+
+  // A subtle nail is visible mainly on the left bow hand.
+  if(!right){
+    const nailMat=new THREE.MeshStandardMaterial({
+      color:0xd7a995,roughness:.55,metalness:0
+    });
+    const nail=new THREE.Mesh(new THREE.SphereGeometry(.010,14,8),nailMat);
+    nail.scale.set(.72,.32,1.08);
+    nail.position.set(-.095,-.012,-.035);
+    nail.castShadow=true;
+    g.add(nail);
+  }
+
+  return g;
+}
+
+const leftUpperSleeve = makeSegment(matGiShadow);
+const leftForeSleeve = makeSegment(matGi);
+const rightUpperSleeve = makeSegment(matGiShadow);
+const rightForeSleeve = makeSegment(matGi);
+
+const leftHand = createHand(matSkin,false);
+const rightHand = createHand(matYugake,true);
+shooter.add(leftHand,rightHand);
+
+const leftShoulder = new THREE.Vector3(-.26,.48,3.62);
+const leftElbow = new THREE.Vector3(-.46,.70,3.12);
+const rightShoulder = new THREE.Vector3(.53,.62,3.66);
+const rightElbowBase = new THREE.Vector3(.74,1.00,3.61);
+
+function updateShooterPose(poseDraw, rightFollow, handReturn){
+  const leftWrist = bowRoot.position.clone().add(new THREE.Vector3(-.005,.015,.055));
+  leftHand.position.copy(leftWrist);
+  leftHand.rotation.set(.08,-.08,-.08);
+
+  const armPoseDraw = releaseHandBase ? (1-handReturn) : poseDraw;
+  const p=drawPoseEase(armPoseDraw);
+  const leftShoulderPose=leftShoulder.clone().add(new THREE.Vector3(0,.06*(1-p),0));
+  const leftElbowPose=leftElbow.clone().lerp(
+    new THREE.Vector3(-.31,1.66,2.92),
+    1-p
+  );
+  placeSegment(leftUpperSleeve,leftShoulderPose,leftElbowPose,.105);
+  placeSegment(leftForeSleeve,leftElbowPose,leftWrist,.078);
+
+  // Before release the hand follows the nock normally.
+  // After release it is anchored at the FULL-DRAW position; the string may
+  // snap forward, but the hand must not follow it.  This is the key zanshin fix.
+  let handBase;
+  if(releaseHandBase){
+    const restNock = getReadyArrowPose(0, aimX, aimY).nock;
+    handBase = releaseHandBase.clone().lerp(restNock, handReturn);
+  }else{
+    handBase = getReadyArrowPose(armPoseDraw, aimX, aimY).nock;
+  }
+
+  // The nock and the right hand are the same physical action:
+  // the hand holds the nock, so the rear end of the arrow must follow the hand.
+  const kai = THREE.MathUtils.smoothstep(armPoseDraw, .58, .98);
+
+  // Only after release does the hand separate from the nock and continue
+  // farther right/back into zanshin.
+  const releaseOffset = new THREE.Vector3(
+    .34*rightFollow,
+    .045*rightFollow,
+    .11*rightFollow
+  );
+
+  const rightWrist = handBase.clone()
+    .add(new THREE.Vector3(.045,.016,.025))
+    .add(releaseOffset);
+
+  const rightShoulderPose=rightShoulder.clone().add(new THREE.Vector3(0,.07*(1-p),0));
+  const uchiRightElbow=new THREE.Vector3(.34,1.78,3.02);
+  const elbowBase=rightElbowBase.clone().lerp(uchiRightElbow,1-p);
+
+  // The elbow opens to the right as the nock approaches the cheek/ear.
+  elbowBase.x += .20*kai;
+  elbowBase.z += .055*kai;
+
+  const elbow = elbowBase.add(new THREE.Vector3(
+    .16*rightFollow,
+    .03*rightFollow,
+    .08*rightFollow
+  ));
+
+  rightHand.position.copy(rightWrist);
+  rightHand.rotation.set(-.04,-.18-.38*(kai+rightFollow),.18+.12*rightFollow);
+  placeSegment(rightUpperSleeve,rightShoulderPose,elbow,.11);
+  placeSegment(rightForeSleeve,elbow,rightWrist,.083);
+
+  // The wrist is extremely close to the virtual eye at full draw.  Realistically
+  // it is behind the right edge of the shooter's visual field.  Fade the hand
+  // geometry out only at the very end of the draw to avoid a near-camera mesh
+  // popping across the screen due to perspective clipping.
+  const kaiHidden = armPoseDraw >= .93;
+  const zanshinHidden = releaseHandBase !== null && handReturn < .80;
+
+  // In a shooter's forward field of view, the right wrist/forearm are already
+  // beside/behind the head at kai.  Do not let near-camera perspective make
+  // them appear in front of the face.
+  rightHand.visible = !(kaiHidden || zanshinHidden);
+  rightForeSleeve.visible = !(kaiHidden || zanshinHidden);
+
+  // Hide the upper sleeve only at the very deepest kai / early zanshin;
+  // otherwise a small shoulder presence remains natural.
+  rightUpperSleeve.visible = !(
+    armPoseDraw >= .985 ||
+    (releaseHandBase !== null && handReturn < .58)
+  );
+}
+
+// ---------- Arrow ----------
+const ARROW_LEN = 1.72;
+const TIP_EXTRA = .035;
+
+function createArrow(){
+  // Arrow origin is the nock. This removes the confusing "stuck" arrow feeling while drawing.
+  const g = new THREE.Group();
+  // Explicit lifecycle flags prevent a fired/spent arrow from ever being treated as the next ready arrow.
+  g.userData.isArrow = true;
+  g.userData.isReady = true;
+
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,ARROW_LEN,8), matArrow);
+  shaft.rotation.x = Math.PI/2;
+  shaft.position.z = -ARROW_LEN * 0.5;
+  g.add(shaft);
+
+  const tip = new THREE.Mesh(
+    new THREE.ConeGeometry(.017,.07,10),
+    new THREE.MeshStandardMaterial({color:0x43443f,roughness:.38,metalness:.65})
+  );
+  tip.rotation.x = -Math.PI/2;
+  tip.position.z = -ARROW_LEN - TIP_EXTRA;
+  g.add(tip);
+
+  // Kyudo arrow feathers: three distinct feather-shaped vanes close to the nock.
+  // Use a tapered asymmetric silhouette rather than rectangular cards.
+  const featherShape = new THREE.Shape();
+  featherShape.moveTo(0.000, 0.000);
+  featherShape.bezierCurveTo(.010, .018, .020, .055, .018, .105);
+  featherShape.bezierCurveTo(.016, .145, .010, .175, .004, .198);
+  featherShape.lineTo(-.004, .198);
+  featherShape.bezierCurveTo(-.008, .155, -.010, .095, -.006, .045);
+  featherShape.bezierCurveTo(-.004, .020, -.002, .006, 0.000, 0.000);
+
+  const featherGeo = new THREE.ShapeGeometry(featherShape, 10);
+  featherGeo.translate(0, -.012, 0);
+
+  const featherMat = new THREE.MeshStandardMaterial({
+    color:0xf1eee4,
+    roughness:.92,
+    side:THREE.DoubleSide
+  });
+
+  // Local arrow axis is -Z. Put three feathers at 120 degrees around the shaft.
+  const featherZ = -.19;
+  for(const rot of [0, Math.PI*2/3, Math.PI*4/3]){
+    const holder = new THREE.Group();
+    holder.position.z = featherZ;
+    holder.rotation.z = rot;
+
+    const f = new THREE.Mesh(featherGeo, featherMat);
+    // ShapeGeometry lies in XY. Rotate so feather length follows arrow axis.
+    f.rotation.x = Math.PI/2;
+    f.position.x = .010;
+    holder.add(f);
+
+    g.add(holder);
+  }
+
+  // Small dark nock so the rear end is visually readable.
+  const nock = new THREE.Mesh(
+    new THREE.CylinderGeometry(.0065,.0065,.026,10),
+    new THREE.MeshStandardMaterial({color:0x5a4634,roughness:.80})
+  );
+  nock.rotation.x = Math.PI/2;
+  nock.position.z = .010;
+  g.add(nock);
+
+  return g;
+}
+
+function arrowForward(arrow){
+  return new THREE.Vector3(0,0,-1).applyQuaternion(arrow.quaternion).normalize();
+}
+function arrowTipPos(arrow){
+  return arrow.position.clone().addScaledVector(arrowForward(arrow), ARROW_LEN + TIP_EXTRA);
+}
+
+let readyArrow = createArrow();
+scene.add(readyArrow);
+
+// ---------- UI ----------
+const elStatusMain = document.querySelector('#statusMain');
+const elStatusSub = document.querySelector('#statusSub');
+const elDrawWrap = document.querySelector('#drawWrap');
+const elDrawFill = document.querySelector('#drawFill');
+const elDrawLabel = document.querySelector('#drawLabel');
+const elFlash = document.querySelector('#flash');
+const elReleaseMark = document.querySelector('#releaseMark');
+const elCenterCall = document.querySelector('#centerCall');
+const elCenterSub = document.querySelector('#centerSub');
+const elResult = document.querySelector('#result');
+const elResultTitle = document.querySelector('#resultTitle');
+const elResultScore = document.querySelector('#resultScore');
+const elMiniMato = document.querySelector('#miniMato');
+const elMatoCount = document.querySelector('#matoCount');
+
+function clearMiniMato(){
+  elMiniMato.querySelectorAll('.matoMark').forEach(e=>e.remove());
+  elMatoCount.textContent='0 / 4';
+}
+
+function addMiniMatoMark(dx,dy){
+  // dx/dy are metres relative to the real target centre.
+  // The miniature target radius maps to 50% of this square.
+  const nx = THREE.MathUtils.clamp(dx / TARGET_R, -1, 1);
+  const ny = THREE.MathUtils.clamp(dy / TARGET_R, -1, 1);
+
+  const mark=document.createElement('span');
+  mark.className='matoMark';
+  mark.style.left=(50 + nx*48) + '%';
+  // Screen Y increases downward, target Y increases upward.
+  mark.style.top=(50 - ny*48) + '%';
+  elMiniMato.appendChild(mark);
+
+  const count=elMiniMato.querySelectorAll('.matoMark').length;
+  elMatoCount.textContent=`${count} / 4`;
+}
+
+function ordinal(n){ return ['一','二','三','四'][n] + '射目'; }
+function updateHUD(impacts, shotCount, canShoot, pointerDown){
+  for(let i=0;i<4;i++){
+    const e=document.querySelector('#s'+i);
+    e.className='shot'+(impacts[i] ? (impacts[i].hit?' hit':' miss'):'');
+  }
+  if(shotCount<4 && canShoot && !pointerDown){
+    elStatusMain.textContent=ordinal(shotCount);
+    elStatusSub.textContent='的を見て、静かに引く';
+  }
+}
+function flashCall(main, sub=''){
+  elCenterCall.textContent = main;
+  elCenterSub.textContent = sub;
+  elCenterCall.animate([
+    {opacity:0, transform:'translate(-50%,-50%) scale(.78)'},
+    {opacity:1, transform:'translate(-50%,-50%) scale(1.0)', offset:.25},
+    {opacity:0, transform:'translate(-50%,-50%) scale(1.12)'}
+  ],{duration:720,easing:'ease-out'});
+  elCenterSub.animate([
+    {opacity:0, transform:'translate(-50%,-50%) translateY(8px)'},
+    {opacity:1, transform:'translate(-50%,-50%) translateY(0px)', offset:.25},
+    {opacity:0, transform:'translate(-50%,-50%) translateY(-6px)'}
+  ],{duration:720,easing:'ease-out'});
+}
+
+// ---------- Audio ----------
+let audioCtx=null;
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+function burstNoise(duration=.08, gain=.14, filterFreq=900){
+  ensureAudio();
+  const n=Math.floor(audioCtx.sampleRate*duration);
+  const buf=audioCtx.createBuffer(1,n,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const src=audioCtx.createBufferSource(); src.buffer=buf;
+  const filter=audioCtx.createBiquadFilter(); filter.type='bandpass'; filter.frequency.value=filterFreq; filter.Q.value=.8;
+  const gn=audioCtx.createGain(); gn.gain.value=gain;
+  src.connect(filter).connect(gn).connect(audioCtx.destination); src.start();
+}
+function twang(){
+  ensureAudio();
+  burstNoise(.042,.19,1750);
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='triangle';
+  o.frequency.setValueAtTime(155,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(76,audioCtx.currentTime+.13);
+  g.gain.setValueAtTime(.14,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.15);
+  o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+.16);
+  setTimeout(()=>burstNoise(.065,.055,760),38);
+}
+function yugaeriWhoosh(){ burstNoise(.085,.045,540); }
+function thunk(hit){
+  ensureAudio(); burstNoise(hit?.12:.08, hit?.24:.11, hit?460:280);
+  if(hit){
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=122;
+    g.gain.setValueAtTime(.12,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.18);
+    o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+.19);
+  }
+}
+
+// ---------- State ----------
+let pointerDown=false, startY=0, startX=0, lastX=0, lastY=0, lastMoveT=0;
+let draw=0, poseDraw=0, holdStable=0, shotCount=0, hitCount=0;
+let aimX=0, aimY=0, lockedAimX=0, lockedAimY=0;
+let canShoot=true, impacts=[], resultDistances=[];
+let flying=[], particles=[];
+let yugaeri=0, rightFollow=0, handReturn=0, releaseKick=0, targetPulse=0;
+let releaseHandBase=null;
+let releaseAnim={active:false,t:0,drawAtRelease:0,stability:0};
+let poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
+let statusToken=0;
+let missSpreadDebug = 0;
+const maxDrag = Math.min(innerHeight*.34, 270);
+const pullDir = new THREE.Vector2(0.14, 1).normalize();
+
+// Tuning constants for feel.
+// VISUAL gains affect how clearly the arrow orientation responds while aiming.
+// SHOT gains affect actual shot direction.
+// ASSIST reduces frustration by gently pulling near shots inward.
+const AIM_VISUAL_GAIN_X = 2.2;
+const AIM_VISUAL_GAIN_Y = 1.9;
+
+// The actual shot direction is deliberately compressed.
+// The user is controlling the fine placement around the mato, not whether the
+// arrow flies somewhere far away from it.
+const AIM_SHOT_GAIN_X = 0.78;
+const AIM_SHOT_GAIN_Y = 0.72;
+
+// Maximum practical aim offset at the target plane.
+// Even a poor drag should still send the arrow near the mato.
+const AIM_LIMIT_X = TARGET_R * 1.15;
+const AIM_LIMIT_Y = TARGET_R * 1.05;
+
+// Near-target assist remains subtle, but now covers essentially the whole
+// practical aiming range.
+const MAGNET_START_R = TARGET_R * 1.45;
+const MAGNET_FULL_R = TARGET_R * 0.85;
+const MAGNET_MAX = 0.20;
+
+// Kai timing: staying calm longer sharply improves grouping up to this point.
+const KAI_STABLE_START = 0.35;
+const KAI_STABLE_FULL = 1.85;
+
+
+function setAimFromPointer(x,y){
+  const nx=(x/innerWidth-.5)*2;
+  const ny=(.5-y/innerHeight)*2;
+
+  // Initial click is only a coarse hint.  Keep it near the target so the
+  // player fine-tunes placement during hikiwake rather than missing wildly.
+  aimX=THREE.MathUtils.clamp(nx*0.085,-.10,.10);
+  aimY=THREE.MathUtils.clamp(ny*0.070,-.08,.08);
+}
+
+function updateReadyArrow(){
+  // IMPORTANT:
+  // A fired arrow must never be repositioned to the nock again.
+  // Previously, after impact it left `flying` but was still referenced by `readyArrow`
+  // for ~1 second, so this function pulled it back to the shooter's hand and left a
+  // foreground "ghost arrow" when the next arrow was created.
+  if(!readyArrow || !readyArrow.userData.isReady) return;
+
+  const pose = getReadyArrowPose(poseDraw, aimX, aimY);
+
+  // Keep the arrow on the bow-hand contact point while making the tip face
+  // the target direction instead of drifting left of the mato.
+  readyArrow.position.copy(pose.nock);
+  readyArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1), pose.dir);
+}
+
+function cameraSway(time){
+  const inKai = poseDraw > .92 && pointerDown;
+  const amp = inKai ? Math.max(.0007, .0037 - holdStable*.00155) : .0027;
+  camera.position.x = CAMERA_BASE.x + Math.sin(time*.0017)*amp + releaseKick*.0035;
+  camera.position.y = CAMERA_BASE.y + Math.sin(time*.0011+1.4)*amp*.65 - releaseKick*.0015;
+  camera.position.z = CAMERA_BASE.z + releaseKick*.006;
+  const lookX = aimX*.10;
+  const lookY = 1.56 + aimY*.08;
+  camera.lookAt(lookX, lookY, -28);
+  camera.rotateZ(-releaseKick*.0025);
+}
+
+// ---------- Input ----------
+renderer.domElement.addEventListener('pointerdown', e=>{
+  if(!canShoot || shotCount>=4 || poseRecover.active) return;
+  ensureAudio();
+  pointerDown=true;
+  startY=e.clientY; startX=e.clientX; lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
+  draw=0; poseDraw=0; holdStable=0; yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null;
+  bowRoot.rotation.set(0,0,0);
+  bowRoot.position.copy(bowPosePosition(0));
+  setAimFromPointer(e.clientX,e.clientY);
+  lockedAimX=aimX; lockedAimY=aimY;
+  renderer.domElement.setPointerCapture?.(e.pointerId);
+  elDrawWrap.style.opacity=1;
+  elStatusMain.textContent='引分け';
+  elStatusSub.textContent='基準線からのずれで狙いを調整';
+});
+
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(!pointerDown){
+    setAimFromPointer(e.clientX,e.clientY);
+    return;
+  }
+
+  const dragX = e.clientX - startX;
+  const dragY = Math.max(0, e.clientY - startY);
+
+  // Project the drag vector onto the natural hikiwake direction.
+  // Pulling farther down/right increases draw.
+  const proj = Math.max(0, dragX * pullDir.x + dragY * pullDir.y);
+  draw = THREE.MathUtils.clamp(proj / maxDrag, 0, 1);
+  poseDraw = draw;
+
+  // The deviation from that ideal pull line controls aiming.
+  // This makes the initial click a coarse aim point, and the relative
+  // pointer position during hikiwake a fine aim adjustment in both axes.
+  const idealX = pullDir.x * proj;
+  const idealY = pullDir.y * proj;
+  const offsetX = dragX - idealX;
+  const offsetY = dragY - idealY;
+
+  // Fine placement only: the drag changes where around the mato the arrow goes,
+  // but it should not be possible to send it far away with normal input.
+  lockedAimX = THREE.MathUtils.clamp(
+    aimX + offsetX / innerWidth * .72,
+    -AIM_LIMIT_X,
+     AIM_LIMIT_X
+  );
+  lockedAimY = THREE.MathUtils.clamp(
+    aimY - offsetY / innerHeight * .66,
+    -AIM_LIMIT_Y,
+     AIM_LIMIT_Y
+  );
+
+  const movement = Math.hypot(e.clientX-lastX,e.clientY-lastY);
+  if(movement>2.2) holdStable=Math.max(0,holdStable-.08);
+  lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
+});
+
+function releaseShot(){
+  if(!pointerDown) return;
+  pointerDown=false;
+  elDrawWrap.style.opacity=0;
+  if(draw<.42){
+    draw=0; poseDraw=0; holdStable=0;
+    updateBowGeometry(0);
+    updateString(0,0, aimX, aimY);
+    elStatusMain.textContent=ordinal(shotCount);
+    elStatusSub.textContent='もう少し大きく引く';
+    return;
+  }
+  fire();
+}
+renderer.domElement.addEventListener('pointerup', releaseShot);
+renderer.domElement.addEventListener('pointercancel', releaseShot);
+document.querySelector('#restart').addEventListener('click', resetGame);
+
+// ---------- Shot logic ----------
+function easeOutCubic(x){ return 1-Math.pow(1-x,3); }
+function easeInOutCubic(x){ return x<.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2; }
+
+function fire(){
+  canShoot=false;
+  const arrow=readyArrow;
+  if(!arrow) return;
+
+  // Detach immediately. From this instant onward this object is a fired arrow,
+  // never a "ready" arrow. This is the core fix for the accumulated ghost arrows.
+  arrow.userData.isReady = false;
+  readyArrow = null;
+
+  const releaseDraw=draw;
+  const releaseHold=holdStable;
+
+  // Freeze the actual visible nock/right-hand position at full draw.
+  // The bow/string returns forward after release, but the hand remains behind.
+  releaseHandBase = getReadyArrowPose(releaseDraw, lockedAimX, lockedAimY).nock.clone();
+  handReturn = 0;
+
+  flying.push(arrow);
+
+  const nockStart=arrow.position.clone();
+  const startDir=arrowForward(arrow);
+  const tipStart=arrowTipPos(arrow);
+
+  const speed = 48 + releaseDraw*7;
+  const distance = Math.abs(TARGET_Z - tipStart.z);
+  const t = distance / speed;
+  const ballisticLift = .5 * 9.81 * t * t;
+
+  // Kai stability is intentionally nonlinear:
+  // a rushed release is still playable, but holding a calm kai noticeably tightens the group.
+  const stability = THREE.MathUtils.smoothstep(
+    releaseHold,
+    KAI_STABLE_START,
+    KAI_STABLE_FULL
+  );
+
+  // Much tighter overall spread.
+  // Even a rushed/rough release should stay around the mato; a settled kai
+  // mainly decides whether the arrow lands toward the centre or edge.
+  const baseSpread = THREE.MathUtils.lerp(.012,.0014,stability);
+  const rawDrawPenalty = Math.max(0,.92-releaseDraw)*.022;
+  const drawPenalty = rawDrawPenalty * THREE.MathUtils.lerp(1.0,.38,stability);
+
+  const randn = ()=>{
+    const u=Math.max(1e-6,Math.random()), v=Math.random();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  };
+
+  const errX = randn()*(baseSpread+drawPenalty);
+  const errY = randn()*(baseSpread+drawPenalty);
+  missSpreadDebug = baseSpread + drawPenalty;
+
+  const aimedX = THREE.MathUtils.clamp(
+    lockedAimX * AIM_SHOT_GAIN_X,
+    -AIM_LIMIT_X,
+     AIM_LIMIT_X
+  );
+  const aimedY = THREE.MathUtils.clamp(
+    lockedAimY * AIM_SHOT_GAIN_Y,
+    -AIM_LIMIT_Y,
+     AIM_LIMIT_Y
+  );
+
+  // Weak "magnet" only near the target.
+  // Outside MAGNET_START_R there is zero correction.
+  const aimDistance = Math.hypot(aimedX, aimedY);
+  let magnet = 0;
+  if(aimDistance < MAGNET_START_R){
+    const nearFactor = 1 - THREE.MathUtils.smoothstep(
+      aimDistance,
+      MAGNET_FULL_R,
+      MAGNET_START_R
+    );
+
+    // A settled kai earns a little more benefit from the same near-target assist,
+    // but even at full stability the correction remains subtle.
+    const kaiMagnetBonus = THREE.MathUtils.lerp(.82,1.0,stability);
+    magnet = MAGNET_MAX * nearFactor * kaiMagnetBonus;
+  }
+
+  const correctedX = aimedX * (1 - magnet);
+  const correctedY = aimedY * (1 - magnet);
+
+  const target = new THREE.Vector3(
+    correctedX + errX,
+    TARGET_Y + correctedY + ballisticLift + errY,
+    TARGET_Z
+  );
+
+  const vel = target.clone().sub(tipStart).normalize().multiplyScalar(speed);
+
+  Object.assign(arrow.userData, {
+    isArrow: true,
+    isReady: false,
+    velocity: vel,
+    prevTip: tipStart.clone(),
+    prevNock: nockStart.clone(),
+    shotIndex: shotCount,
+    life: 0,
+    vibration: 0,
+    flying: true
+  });
+
+  shotCount++;
+  releaseAnim={active:true,t:0,drawAtRelease:releaseDraw,stability};
+  poseRecover.active=false;
+  releaseKick=1;
+  twang();
+  setTimeout(yugaeriWhoosh,46);
+
+  draw=0;
+  holdStable=0;
+  elStatusMain.textContent='離れ';
+  elStatusSub.textContent='押手を残し、右手は後方へ';
+  elReleaseMark.animate([
+    {opacity:.9,transform:'translate(-50%,-50%) scale(.65)'},
+    {opacity:0,transform:'translate(-50%,-50%) scale(8.5)'}
+  ],{duration:360,easing:'ease-out'});
+
+  const token=++statusToken;
+  setTimeout(()=>{
+    if(token!==statusToken) return;
+    if(!canShoot){
+      elStatusMain.textContent='残心';
+      elStatusSub.textContent='左右に伸びた形を保つ';
+    }
+  },135);
+}
+
+function beginPoseRecovery(){
+  poseRecover = {active:true,t:0,startYugaeri:yugaeri,startRight:rightFollow};
+  handReturn = 0;
+}
+
+function resolveImpact(arrow, hitPos, incomingForward){
+  arrow.userData.flying=false;
+  arrow.userData.isReady=false;
+  arrow.userData.spent=true;
+  const idx=flying.indexOf(arrow); if(idx>=0) flying.splice(idx,1);
+
+  const dx=hitPos.x;
+  const dy=hitPos.y - TARGET_Y;
+  const r=Math.hypot(dx,dy);
+  const hit=r<=TARGET_R;
+
+  impacts[arrow.userData.shotIndex]={hit,r,x:dx,y:dy};
+  if(hit){ hitCount++; resultDistances.push(r*1000); }
+
+  const tipEmbed = hitPos.clone().addScaledVector(incomingForward, .09);
+  const nockFinal = tipEmbed.clone().addScaledVector(incomingForward, -(ARROW_LEN + TIP_EXTRA));
+  arrow.position.copy(nockFinal);
+  arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1), incomingForward.clone().normalize());
+  arrow.userData.vibration = hit ? .55 : .24;
+  arrow.userData.baseQuat = arrow.quaternion.clone();
+
+  thunk(hit);
+  targetPulse = hit ? 1 : .35;
+  statusToken++;
+
+  spawnImpactRing(hitPos, hit);
+  if(hit){
+    addMiniMatoMark(dx,dy);
+    elStatusMain.textContent='的中';
+    elStatusSub.textContent=`中心から ${Math.round(r*1000)} mm`;
+    flashCall('的中', `中心から ${Math.round(r*1000)} mm`);
+    elFlash.animate([{opacity:.85},{opacity:0}],{duration:430,easing:'ease-out'});
+    spawnDust(hitPos,true);
+  }else{
+    elStatusMain.textContent='外れ';
+    elStatusSub.textContent='矢所を見て、次の一本へ';
+    flashCall('外れ', '次の一本へ');
+    spawnDust(hitPos,false);
+  }
+  updateHUD(impacts, shotCount, canShoot, pointerDown);
+
+  setTimeout(beginPoseRecovery, 700);
+
+  setTimeout(()=>{
+    if(shotCount>=4){
+      showResult();
+    } else {
+      readyArrow=createArrow();
+      readyArrow.userData.isReady=true;
+      scene.add(readyArrow);
+      canShoot=true;
+      updateHUD(impacts, shotCount, canShoot, pointerDown);
+    }
+  }, hit ? 1450 : 1320);
+}
+
+function showResult(){
+  canShoot=false;
+  const title = hitCount===4 ? '皆中' : hitCount===0 ? '射了' : `${hitCount}中`;
+  elResultTitle.textContent = title;
+  let score = `四射 ${hitCount}中`;
+  if(resultDistances.length){
+    const avg=resultDistances.reduce((a,b)=>a+b,0)/resultDistances.length;
+    score += `　・　的中矢 平均中心距離 ${Math.round(avg)} mm`;
+  }
+  elResultScore.textContent = score;
+  elResult.style.display='grid';
+}
+
+// ---------- Dust ----------
+function spawnDust(pos,hit){
+  const count=hit?12:8;
+  for(let i=0;i<count;i++){
+    const p=new THREE.Mesh(
+      new THREE.SphereGeometry(.008,5,4),
+      new THREE.MeshBasicMaterial({color:hit?0xded6c4:0xa39173,transparent:true,opacity:.55})
+    );
+    p.position.set(pos.x+(Math.random()-.5)*.08, pos.y+(Math.random()-.5)*.08, TARGET_Z+.12);
+    p.userData.v = new THREE.Vector3((Math.random()-.5)*.12, Math.random()*.08, (Math.random()*.12)+.04);
+    p.userData.life = .45 + Math.random()*.25;
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+function resetGame(){
+  statusToken++;
+  // Remove all arrow objects unconditionally. This also guarantees that no orphan
+  // foreground arrow can survive a restart.
+  for(const obj of scene.children.slice()){
+    if(obj.userData?.isArrow || obj.userData?.shotIndex!==undefined || obj===readyArrow) scene.remove(obj);
+  }
+  for(const p of particles) scene.remove(p);
+  for(const r of impactRings) scene.remove(r);
+  particles=[]; impactRings=[]; flying=[]; impacts=[]; shotCount=0; hitCount=0; resultDistances=[];
+  draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false;
+  yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null; releaseKick=0; targetPulse=0;
+  rightHand.visible=true;
+  rightForeSleeve.visible=true;
+  rightUpperSleeve.visible=true;
+  releaseAnim={active:false,t:0,drawAtRelease:0,stability:0};
+  poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
+  bowRoot.position.copy(bowPosePosition(0));
+  bowRoot.rotation.set(0,0,0);
+  updateBowGeometry(0);
+  updateString(0,0);
+  readyArrow=createArrow();
+  readyArrow.userData.isReady=true;
+  scene.add(readyArrow);
+  elResult.style.display='none';
+  clearMiniMato();
+  elStatusMain.textContent='一射目';
+  elStatusSub.textContent='的を見て、静かに引く';
+  updateHUD(impacts, shotCount, canShoot, pointerDown);
+}
+
+// ---------- Main loop ----------
+const clock = new THREE.Clock();
+
+function animate(time){
+  const dt=Math.min(clock.getDelta(),.028);
+
+  if(pointerDown){
+    poseDraw=draw;
+    yugaeri=0;
+    rightFollow=0;
+    handReturn=0;
+    releaseHandBase=null;
+    bowRoot.rotation.y=0;
+    bowRoot.rotation.z=0;
+    bowRoot.position.copy(bowPosePosition(draw));
+
+    const drawForFlex = Math.pow(draw, .92);
+    updateBowGeometry(drawForFlex);
+    updateString(poseDraw, drawForFlex, lockedAimX, lockedAimY);
+
+    if(draw>.92){
+      if(performance.now()-lastMoveT>85) holdStable=Math.min(2.2,holdStable+dt);
+      const p=THREE.MathUtils.smoothstep(
+        holdStable,
+        KAI_STABLE_START,
+        KAI_STABLE_FULL
+      );
+      elStatusMain.textContent=p>.55?'会':'引分け';
+      elStatusSub.textContent=
+        p>.90 ? '会が深まる — 矢所が最も安定' :
+        p>.55 ? '左右に伸び合い、静かに保つ' :
+                 '静かに保つ';
+      elDrawLabel.textContent=
+        p>.90 ? '会 — 安定' :
+        p>.55 ? '会 — 離れを作らない' :
+                '引分け';
+    }else{
+      elStatusMain.textContent='引分け';
+      elStatusSub.textContent=draw>.72?'ドラッグで矢所を微調整':'下へ引きつつ的周辺へ合わせる';
+      elDrawLabel.textContent='引分け';
+    }
+    elDrawFill.style.width=(draw*100).toFixed(1)+'%';
+  }
+
+  if(releaseAnim.active){
+    releaseAnim.t += dt;
+    const snap = easeOutCubic(Math.min(releaseAnim.t/.115,1));
+    poseDraw = releaseAnim.drawAtRelease*(1-snap);
+
+    const turn = easeOutCubic(Math.min(releaseAnim.t/.34,1));
+    yugaeri = turn;
+    rightFollow = easeOutCubic(Math.min(releaseAnim.t/.22,1));
+    handReturn = 0;
+
+    const flexNow = releaseAnim.drawAtRelease*(1-snap);
+    updateBowGeometry(flexNow);
+    updateString(poseDraw, flexNow, lockedAimX, lockedAimY);
+
+    bowRoot.rotation.y = -2.62 * yugaeri;
+    bowRoot.rotation.z = .028*Math.sin(Math.min(releaseAnim.t/.28,1)*Math.PI);
+    bowRoot.position.copy(bowPosePosition(1));
+
+    if(releaseAnim.t>.62){
+      releaseAnim.active=false;
+      poseDraw=0;
+      yugaeri=1;
+      rightFollow=1;
+      bowRoot.rotation.y=-2.62;
+      bowRoot.rotation.z=0;
+      updateBowGeometry(0);
+      updateString(0,0, aimX, aimY);
+    }
+  }
+
+  if(poseRecover.active){
+    poseRecover.t += dt;
+    const p=easeInOutCubic(Math.min(poseRecover.t/.62,1));
+    yugaeri = THREE.MathUtils.lerp(poseRecover.startYugaeri,0,p);
+    rightFollow = THREE.MathUtils.lerp(poseRecover.startRight,0,p);
+    handReturn = p;
+    bowRoot.rotation.y = -2.62*yugaeri;
+    bowRoot.rotation.z = 0;
+    bowRoot.position.copy(bowPosePosition(1-p));
+    poseDraw=1-p;
+    updateBowGeometry(0);
+    updateString(0,0, aimX, aimY);
+    if(p>=1){
+      poseRecover.active=false;
+      yugaeri=0;
+      rightFollow=0;
+      handReturn=0;
+      releaseHandBase=null;
+      bowRoot.rotation.set(0,0,0);
+      bowRoot.position.copy(bowPosePosition(0));
+    }
+  }
+
+  aimX=pointerDown?lockedAimX:aimX;
+  aimY=pointerDown?lockedAimY:aimY;
+
+  updateReadyArrow();
+  updateShooterPose(poseDraw, rightFollow, handReturn);
+
+  for(const a of [...flying]){
+    if(!a.userData.flying) continue;
+    a.userData.life += dt;
+
+    const prevTip = arrowTipPos(a);
+    a.userData.prevTip.copy(prevTip);
+    a.userData.prevNock.copy(a.position);
+
+    a.userData.velocity.y -= 9.81*dt;
+    a.position.addScaledVector(a.userData.velocity, dt);
+    a.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1), a.userData.velocity.clone().normalize());
+
+    const tip = arrowTipPos(a);
+
+    if(tip.z <= TARGET_Z){
+      const p0=a.userData.prevTip, p1=tip;
+      const frac=(TARGET_Z-p0.z)/(p1.z-p0.z);
+      const hitPos=p0.clone().lerp(p1, THREE.MathUtils.clamp(frac,0,1));
+      hitPos.z=TARGET_Z;
+      resolveImpact(a, hitPos, a.userData.velocity.clone().normalize());
+    }else if(a.userData.life>2.5){
+      resolveImpact(a, new THREE.Vector3(tip.x, tip.y, TARGET_Z), a.userData.velocity.clone().normalize());
+    }
+  }
+
+  for(const obj of scene.children){
+    if(obj.userData?.vibration>0 && obj.userData?.baseQuat){
+      obj.userData.vibration=Math.max(0,obj.userData.vibration-dt);
+      const amp=obj.userData.vibration*.035;
+      obj.quaternion.copy(obj.userData.baseQuat);
+      obj.rotateY(Math.sin(time*.055)*amp);
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.userData.life-=dt;
+    p.position.addScaledVector(p.userData.v,dt);
+    p.userData.v.y-=.18*dt;
+    p.material.opacity=Math.max(0,p.userData.life*.75);
+    if(p.userData.life<=0){ scene.remove(p); particles.splice(i,1); }
+  }
+
+  for(let i=impactRings.length-1;i>=0;i--){
+    const r=impactRings[i];
+    r.userData.life-=dt;
+    r.userData.scale += dt*(r.userData.hit ? 2.8 : 2.2);
+    r.scale.setScalar(r.userData.scale);
+    r.material.opacity=Math.max(0,r.userData.life*2);
+    if(r.userData.life<=0){ scene.remove(r); impactRings.splice(i,1); }
+  }
+
+  targetPulse = Math.max(0, targetPulse - dt*2.8);
+  const pulseScale = 1 + targetPulse*.035;
+  targetGroup.scale.set(pulseScale,pulseScale,pulseScale);
+  for(const d of targetDiscs){
+    d.material.emissive.setHex(targetPulse > 0 ? 0x22190c : 0x000000);
+    d.material.emissiveIntensity = targetPulse*.65;
+  }
+
+  releaseKick=Math.max(0,releaseKick-dt*5.6);
+  cameraSway(time);
+  renderer.render(scene,camera);
+}
+renderer.setAnimationLoop(animate);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+updateBowGeometry(0);
+updateString(0,0);
+updateReadyArrow();
+bowRoot.position.copy(bowPosePosition(0));
+updateShooterPose(0,0,0);
+updateHUD(impacts, shotCount, canShoot, pointerDown);
+</script>
+</body>
+</html>
