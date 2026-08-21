@@ -389,6 +389,7 @@ for(let i=0;i<BOW_SEGMENTS;i++){
 
 let stringLine = null;
 let currentBowFlex = -1;
+let stringAtRest = false;
 
 function composeBowPts(flex){
   return baseBowPts.map((p) => {
@@ -470,11 +471,12 @@ function updateString(drawAmount, bowFlex, ax=aimX, ay=aimY){
   const topTip = pts[pts.length - 1];
   const botTip = pts[0];
 
-  // IMPORTANT:
-  // The string must always meet the actual displayed rear end of the arrow.
-  // Using an independent nockLocal(...) caused the string to drift away from
-  // the arrow's nock during deep hikiwake / kai.
-  const n = getReadyArrowNockLocal(drawAmount, ax, ay);
+  // While drawing, the string meets the actual displayed rear end of the
+  // arrow. Once the arrow has left, there is no nock to pull the string into a
+  // second bend: the relaxed string is a single straight span between the tips.
+  const n = stringAtRest
+    ? topTip.clone().lerp(botTip, .5)
+    : getReadyArrowNockLocal(drawAmount, ax, ay);
 
   const geo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(topTip.x, topTip.y, topTip.z),
@@ -1171,6 +1173,7 @@ function fire(){
   readyArrow = null;
 
   const releaseDraw=draw;
+  stringAtRest=false;
   // Recompute from the final pointer coordinates so a fast last aiming motion
   // cannot release before the next animation frame updates the mesh.
   const releasePose = getReadyArrowPose(releaseDraw, lockedAimX, lockedAimY);
@@ -1291,6 +1294,7 @@ function resolveImpact(arrow, hitPos, incomingForward){
       readyArrow=createArrow();
       readyArrow.userData.isReady=true;
       scene.add(readyArrow);
+      stringAtRest=false;
       canShoot=true;
       updateHUD(impacts, shotCount, canShoot, pointerDown);
     }
@@ -1342,6 +1346,7 @@ function resetGame(){
   rightForeSleeve.visible=true;
   rightUpperSleeve.visible=true;
   releaseAnim={active:false,t:0,drawAtRelease:0};
+  stringAtRest=false;
   poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
   bowRoot.position.copy(bowPosePosition(0));
   bowRoot.rotation.set(0,0,0);
@@ -1404,6 +1409,7 @@ function animate(time){
     releaseAnim.t += dt;
     const snap = easeOutCubic(Math.min(releaseAnim.t/.115,1));
     poseDraw = releaseAnim.drawAtRelease*(1-snap);
+    if(releaseAnim.t>.115) stringAtRest=true;
 
     const turn = easeOutCubic(Math.min(releaseAnim.t/.34,1));
     yugaeri = turn;
