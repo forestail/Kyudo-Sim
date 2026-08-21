@@ -263,7 +263,8 @@ eave.position.set(0,3.28,-28.55); scene.add(eave);
 
 // ---------- Target ----------
 const TARGET_Z = -27.92;
-const TARGET_Y = 1.02;
+// Keep the mato just above the ground line instead of floating high on the wall.
+const TARGET_Y = 0.42;
 const TARGET_R = 0.20;
 
 const targetGroup = new THREE.Group();
