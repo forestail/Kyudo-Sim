@@ -1057,46 +1057,55 @@ function flashCall(main, sub=''){
 
 // ---------- Audio ----------
 let audioCtx=null;
-let mediaAudioUnlocked=false;
+let hitBuffer=null, releaseBuffer=null;
+let audioBufferLoadPromise=null;
 const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
 const releaseAudio = document.querySelector('#releaseAudio');
 releaseAudio.volume = .5;
-function primeMediaAudio(audio){
-  const wasMuted = audio.muted;
-  audio.muted = true;
-  audio.currentTime = 0;
-  const playPromise = audio.play();
-  const reset = ()=>{
-    audio.pause();
-    audio.currentTime = 0;
-    audio.muted = wasMuted;
-  };
-  if(playPromise?.then) playPromise.then(reset).catch(()=>{ audio.muted=wasMuted; });
-  else reset();
+const audioDataPromises = {
+  hit: fetch('./tekichu.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null),
+  release: fetch('./hanare.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null)
+};
+function preloadAudioBuffers(){
+  if(audioBufferLoadPromise) return audioBufferLoadPromise;
+  audioBufferLoadPromise = Promise.all([audioDataPromises.hit,audioDataPromises.release])
+    .then(async ([hitData,releaseData])=>{
+      const decode = data => data ? audioCtx.decodeAudioData(data.slice(0)) : null;
+      [hitBuffer,releaseBuffer] = await Promise.all([decode(hitData),decode(releaseData)]);
+    })
+    .catch(()=>{ hitBuffer=null; releaseBuffer=null; });
+  return audioBufferLoadPromise;
 }
 function unlockAudioForGesture(){
   ensureAudio();
-  if(mediaAudioUnlocked) return;
-  mediaAudioUnlocked=true;
-  primeMediaAudio(hitAudio);
-  primeMediaAudio(releaseAudio);
+}
+function playBufferedSound(buffer, fallback, gain){
+  ensureAudio();
+  if(buffer && audioCtx.state!=='closed'){
+    const source=audioCtx.createBufferSource();
+    const gainNode=audioCtx.createGain();
+    gainNode.gain.value=gain;
+    source.buffer=buffer;
+    source.connect(gainNode).connect(audioCtx.destination);
+    source.start(audioCtx.currentTime);
+    return;
+  }
+  fallback.muted = false;
+  fallback.currentTime = 0;
+  const playPromise = fallback.play();
+  if(playPromise?.catch) playPromise.catch(()=>{});
 }
 function playHitSound(){
-  hitAudio.muted = false;
-  hitAudio.currentTime = 0;
-  const playPromise = hitAudio.play();
-  if(playPromise?.catch) playPromise.catch(()=>{});
+  playBufferedSound(hitBuffer, hitAudio, .92);
 }
 function playReleaseSound(){
-  releaseAudio.muted = false;
-  releaseAudio.currentTime = 0;
-  const playPromise = releaseAudio.play();
-  if(playPromise?.catch) playPromise.catch(()=>{});
+  playBufferedSound(releaseBuffer, releaseAudio, .5);
 }
 function ensureAudio(){
   if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  if(audioCtx.state==='suspended') audioCtx.resume();
+  if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+  preloadAudioBuffers();
 }
 function burstNoise(duration=.08, gain=.14, filterFreq=900){
   ensureAudio();
