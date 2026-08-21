@@ -1453,12 +1453,24 @@ function resolveImpact(arrow, hitPos, incomingForward){
   }
   updateHUD(impacts, shotCount, canShoot, pointerDown);
 
-  setTimeout(beginPoseRecovery, 700);
-
   setTimeout(()=>{
     if(shotCount>=4){
       showResult();
     } else {
+      // Hold the released zanshin pose for the full two-second interval.
+      // Reset it only as the next shot becomes available so the new arrow
+      // starts from a coherent resting bow/hand pose.
+      poseRecover.active=false;
+      releaseAnim.active=false;
+      yugaeri=0;
+      rightFollow=0;
+      handReturn=0;
+      releaseHandBase=null;
+      poseDraw=0;
+      bowRoot.rotation.set(0,0,0);
+      bowRoot.position.copy(bowPosePosition(0));
+      updateBowGeometry(0);
+      updateString(0,0);
       readyArrow=createArrow();
       readyArrow.userData.isReady=true;
       scene.add(readyArrow);
