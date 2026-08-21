@@ -17,7 +17,16 @@
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif
   }
   canvas{display:block;width:100%;height:100%;touch-action:none}
-  #hud{position:fixed;inset:0;pointer-events:none;user-select:none}
+  #focusLens{
+    position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0;
+    background:rgba(16,20,18,.035);
+    -webkit-backdrop-filter:blur(var(--focus-blur,0px)) saturate(.98);
+    backdrop-filter:blur(var(--focus-blur,0px)) saturate(.98);
+    -webkit-mask-image:radial-gradient(ellipse var(--focus-rx,42vw) var(--focus-ry,34vh) at var(--focus-x,50%) var(--focus-y,50%), transparent 0%, transparent 62%, rgba(0,0,0,.42) 82%, #000 100%);
+    mask-image:radial-gradient(ellipse var(--focus-rx,42vw) var(--focus-ry,34vh) at var(--focus-x,50%) var(--focus-y,50%), transparent 0%, transparent 62%, rgba(0,0,0,.42) 82%, #000 100%);
+    transition:opacity .18s ease;
+  }
+  #hud{position:fixed;inset:0;z-index:2;pointer-events:none;user-select:none}
   .brand{
     position:absolute;top:max(18px,env(safe-area-inset-top));left:max(20px,env(safe-area-inset-left));
     letter-spacing:.18em;font-weight:650;font-size:13px;text-shadow:0 1px 12px #000
@@ -164,6 +173,7 @@
 </style>
 </head>
 <body>
+<div id="focusLens" aria-hidden="true"></div>
 <div id="hud">
   <div class="brand">KYUDO <small>近的 28m / 36cm 霞的 — 狙い幅・散り調整版</small></div>
   <div id="shots">
@@ -913,6 +923,7 @@ const elResultTitle = document.querySelector('#resultTitle');
 const elResultScore = document.querySelector('#resultScore');
 const elMiniMato = document.querySelector('#miniMato');
 const elMatoCount = document.querySelector('#matoCount');
+const elFocusLens = document.querySelector('#focusLens');
 
 function clearMiniMato(){
   elMiniMato.querySelectorAll('.matoMark').forEach(e=>e.remove());
@@ -1015,6 +1026,7 @@ let releaseHandBase=null;
 let releaseAnim={active:false,t:0,drawAtRelease:0};
 let poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
 let statusToken=0;
+let focusStrength=0;
 const maxDrag = Math.min(innerHeight*.34, 270);
 const pullDir = new THREE.Vector2(0.14, 1).normalize();
 
@@ -1044,6 +1056,34 @@ function setAimFromPointer(x,y){
   // player fine-tunes placement during hikiwake rather than missing wildly.
   aimX=THREE.MathUtils.clamp(nx*0.085,-.10,.10);
   aimY=THREE.MathUtils.clamp(ny*0.070,-.08,.08);
+}
+
+function updateFocusLens(dt){
+  // The lens appears only after most of hikiwake is complete.  It follows the
+  // same target-plane coordinates as the shot, without adding an aim marker.
+  const focusTarget = pointerDown
+    ? THREE.MathUtils.smoothstep(draw, .68, .92)
+    : 0;
+  const easeRate = focusTarget > focusStrength ? 11 : 8;
+  focusStrength += (focusTarget-focusStrength) * (1-Math.exp(-dt*easeRate));
+  focusStrength = THREE.MathUtils.clamp(focusStrength, 0, 1);
+
+  const focusPoint = getAimPointWorld(lockedAimX, lockedAimY).project(camera);
+  const focusX = THREE.MathUtils.clamp((focusPoint.x*.5+.5)*innerWidth, 0, innerWidth);
+  const focusY = THREE.MathUtils.clamp((-.5*focusPoint.y+.5)*innerHeight, 0, innerHeight);
+
+  const stable = THREE.MathUtils.smoothstep(holdStable, KAI_STABLE_START, KAI_STABLE_FULL);
+  const shortSide = Math.min(innerWidth, innerHeight);
+  const focusRx = Math.min(innerWidth*.82, shortSide*(.52 - stable*.10));
+  const focusRy = Math.min(innerHeight*.62, shortSide*(.36 - stable*.08));
+  const blur = focusStrength * (1.0 + stable*.7);
+
+  elFocusLens.style.setProperty('--focus-x', `${focusX.toFixed(1)}px`);
+  elFocusLens.style.setProperty('--focus-y', `${focusY.toFixed(1)}px`);
+  elFocusLens.style.setProperty('--focus-rx', `${focusRx.toFixed(1)}px`);
+  elFocusLens.style.setProperty('--focus-ry', `${focusRy.toFixed(1)}px`);
+  elFocusLens.style.setProperty('--focus-blur', `${blur.toFixed(2)}px`);
+  elFocusLens.style.opacity = focusStrength.toFixed(3);
 }
 
 function updateReadyArrow(){
@@ -1389,10 +1429,8 @@ function animate(time){
         KAI_STABLE_START,
         KAI_STABLE_FULL
       );
-      const verticalAim = lockedAimY>.14 ? '上' : lockedAimY<-.14 ? '下' : '中央';
-      const horizontalAim = lockedAimX>.14 ? '右' : lockedAimX<-.14 ? '左' : '';
       elStatusMain.textContent='会 — 照準';
-      elStatusSub.textContent=`矢先：${verticalAim}${horizontalAim} — ドラッグしたまま離す`;
+      elStatusSub.textContent='焦点を合わせて、静かに離す';
       elDrawLabel.textContent=
         p>.90 ? '会 — 照準安定' :
         p>.55 ? '会 — 照準' :
@@ -1527,6 +1565,7 @@ function animate(time){
 
   releaseKick=Math.max(0,releaseKick-dt*5.6);
   cameraSway(time);
+  updateFocusLens(dt);
   renderer.render(scene,camera);
 }
 renderer.setAnimationLoop(animate);
