@@ -1088,28 +1088,65 @@ function flashCall(main, sub=''){
 let audioCtx=null;
 let hitBuffer=null, releaseBuffer=null;
 let audioBufferLoadPromise=null;
+let audioContextGeneration=0;
+let audioActivated=false;
+let audioGateMode='initial';
+let audioResumeCheckNeeded=false;
+let audioResumeCheckTimer=0;
+let recoveryTestTriggered=false;
 const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
 const releaseAudio = document.querySelector('#releaseAudio');
 releaseAudio.volume = .5;
 const audioGate = document.querySelector('#audioGate');
 const audioGateButton = document.querySelector('#audioGateButton');
+const audioGateTitle = document.querySelector('#audioGateTitle');
+const audioGateNote = document.querySelector('#audioGateNote');
+const audioTestParams = new URLSearchParams(location.search);
+const forceAudioGateTest = audioTestParams.has('audio-gate-test');
+const forceAudioRecoveryTest = audioTestParams.has('audio-recovery-test');
 const isAppleTouchDevice = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
   (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1) ||
-  new URLSearchParams(location.search).has('audio-gate-test');
+  forceAudioGateTest || forceAudioRecoveryTest;
 const audioDataPromises = {
   hit: fetch('./tekichu.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null),
   release: fetch('./hanare.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null)
 };
 function preloadAudioBuffers(){
   if(audioBufferLoadPromise) return audioBufferLoadPromise;
+  const decodeContext=audioCtx;
+  const generation=audioContextGeneration;
   audioBufferLoadPromise = Promise.all([audioDataPromises.hit,audioDataPromises.release])
     .then(async ([hitData,releaseData])=>{
-      const decode = data => data ? audioCtx.decodeAudioData(data.slice(0)) : null;
-      [hitBuffer,releaseBuffer] = await Promise.all([decode(hitData),decode(releaseData)]);
+      const decode = data => data ? decodeContext.decodeAudioData(data.slice(0)) : null;
+      const decoded=await Promise.all([decode(hitData),decode(releaseData)]);
+      if(generation===audioContextGeneration) [hitBuffer,releaseBuffer]=decoded;
     })
-    .catch(()=>{ hitBuffer=null; releaseBuffer=null; });
+    .catch(()=>{
+      if(generation===audioContextGeneration){ hitBuffer=null; releaseBuffer=null; }
+    });
   return audioBufferLoadPromise;
+}
+function createAudioContext(){
+  audioContextGeneration++;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  hitBuffer=null;
+  releaseBuffer=null;
+  audioBufferLoadPromise=null;
+}
+function recreateAudioContextForGesture(){
+  // Do not close the interrupted iOS context: WebKit can keep the native
+  // audio session interrupted after close(). Abandon it and create a fresh
+  // context synchronously inside the recovery tap instead.
+  createAudioContext();
+}
+async function audioClockIsRunning(waitMs=160){
+  if(!audioCtx || audioCtx.state!=='running') return false;
+  const context=audioCtx;
+  const clockStart=context.currentTime;
+  await new Promise(resolve=>setTimeout(resolve,waitMs));
+  return context===audioCtx && context.state==='running' &&
+    context.currentTime>clockStart+.005;
 }
 function unlockAudioForGesture(){
   const resumePromise=ensureAudio();
@@ -1124,13 +1161,9 @@ function unlockAudioForGesture(){
   unlockSource.connect(audioCtx.destination);
   unlockSource.start(audioCtx.currentTime);
 
-  return Promise.all([resumePromise,preloadAudioBuffers()]).then(()=>{
-    const clockStart=audioCtx.currentTime;
-    return new Promise(resolve=>setTimeout(()=>{
-      const clockRunning=audioCtx.currentTime>clockStart+.005;
-      resolve(audioCtx.state==='running' && clockRunning && !!hitBuffer && !!releaseBuffer);
-    },140));
-  });
+  return Promise.all([resumePromise,preloadAudioBuffers()]).then(async ()=>
+    !!hitBuffer && !!releaseBuffer && await audioClockIsRunning(140)
+  );
 }
 function playBufferedSound(buffer, fallback, gain){
   ensureAudio();
@@ -1155,7 +1188,7 @@ function playReleaseSound(){
   playBufferedSound(releaseBuffer, releaseAudio, .5);
 }
 function ensureAudio(){
-  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(!audioCtx || audioCtx.state==='closed') createAudioContext();
   const resumePromise = audioCtx.state==='running'
     ? Promise.resolve()
     : audioCtx.resume().catch(()=>{});
@@ -1163,17 +1196,87 @@ function ensureAudio(){
   return resumePromise;
 }
 
-if(isAppleTouchDevice) audioGate.classList.add('is-visible');
+function showAudioGate(mode){
+  audioGateMode=mode;
+  audioGate.classList.add('is-visible');
+  if(mode==='checking'){
+    audioGateTitle.textContent='音声を確認しています';
+    audioGateButton.textContent='確認中…';
+    audioGateButton.disabled=true;
+    audioGateNote.textContent='スリープからの復帰後も効果音を再生できるか確認しています。';
+  }else if(mode==='resume'){
+    audioGateTitle.textContent='音声を再開する';
+    audioGateButton.textContent='タップして音声を再開';
+    audioGateButton.disabled=false;
+    audioGateNote.textContent='iPhone / iPadでは、スリープ復帰後にもう一度タップが必要な場合があります。';
+  }else{
+    audioGateTitle.textContent='弓道を始める';
+    audioGateButton.textContent='タップして開始';
+    audioGateButton.disabled=false;
+    audioGateNote.textContent='iPhone / iPadでは、音声を有効にするため最初に一度だけタップしてください。';
+  }
+}
+function hideAudioGate(){
+  audioGate.classList.remove('is-visible');
+  audioGateButton.disabled=false;
+}
+async function checkAudioAfterResume(){
+  if(!isAppleTouchDevice || !audioActivated || !audioCtx) return;
+  if(await audioClockIsRunning()){
+    hideAudioGate();
+    return;
+  }
+
+  // Some iOS versions report `running` while the clock is frozen. A
+  // suspend/resume cycle may recover it without asking for another tap.
+  try{
+    if(audioCtx.state==='running') await audioCtx.suspend();
+    await audioCtx.resume();
+  }catch{}
+
+  if(await audioClockIsRunning()) hideAudioGate();
+  else showAudioGate('resume');
+}
+function scheduleAudioResumeCheck(){
+  if(!isAppleTouchDevice || !audioActivated || !audioResumeCheckNeeded) return;
+  audioResumeCheckNeeded=false;
+  clearTimeout(audioResumeCheckTimer);
+  showAudioGate('checking');
+  audioResumeCheckTimer=setTimeout(checkAudioAfterResume,120);
+}
+
+if(isAppleTouchDevice) showAudioGate('initial');
 audioGateButton.addEventListener('click', async ()=>{
+  if(audioGateMode==='checking') return;
+  const recovering=audioGateMode==='resume';
   audioGateButton.disabled=true;
-  audioGateButton.textContent='音声を準備しています…';
+  audioGateButton.textContent=recovering ? '音声を再開しています…' : '音声を準備しています…';
+
+  if(recovering) recreateAudioContextForGesture();
   const ready=await unlockAudioForGesture();
   if(ready){
-    audioGate.classList.remove('is-visible');
-    audioGateButton.textContent='タップして開始';
+    audioActivated=true;
+    hideAudioGate();
+    if(forceAudioRecoveryTest && !recoveryTestTriggered){
+      recoveryTestTriggered=true;
+      setTimeout(()=>showAudioGate('resume'),450);
+    }
   }else{
-    audioGateButton.disabled=false;
+    showAudioGate(recovering ? 'resume' : 'initial');
     audioGateButton.textContent='もう一度タップ';
+  }
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    if(audioActivated) audioResumeCheckNeeded=true;
+  }else{
+    scheduleAudioResumeCheck();
+  }
+});
+window.addEventListener('pageshow',event=>{
+  if(event.persisted && audioActivated){
+    audioResumeCheckNeeded=true;
+    scheduleAudioResumeCheck();
   }
 });
 function burstNoise(duration=.08, gain=.14, filterFreq=900){
