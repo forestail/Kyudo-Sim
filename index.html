@@ -1464,9 +1464,10 @@ function resolveImpact(arrow, hitPos, incomingForward){
       scene.add(readyArrow);
       stringAtRest=false;
       canShoot=true;
+      postShotHold=false;
       updateHUD(impacts, shotCount, canShoot, pointerDown);
     }
-  }, hit ? 1450 : 1320);
+  }, 2000);
 }
 
 function showResult(){
