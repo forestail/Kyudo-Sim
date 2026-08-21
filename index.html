@@ -1060,7 +1060,7 @@ let audioCtx=null;
 const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
 const releaseAudio = document.querySelector('#releaseAudio');
-releaseAudio.volume = .92;
+releaseAudio.volume = .5;
 function playHitSound(){
   hitAudio.currentTime = 0;
   const playPromise = hitAudio.play();
