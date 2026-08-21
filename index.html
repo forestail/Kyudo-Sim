@@ -202,8 +202,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js';
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x879186);
-scene.fog = new THREE.Fog(0x879186, 20, 48);
+scene.background = new THREE.Color(0x9aa58f);
+scene.fog = new THREE.Fog(0x9aa58f, 20, 48);
 
 const camera = new THREE.PerspectiveCamera(47, innerWidth/innerHeight, 0.05, 80);
 const CAMERA_BASE = new THREE.Vector3(0.02, 1.58, 3.7);
@@ -232,9 +232,16 @@ scene.add(sun);
 // ---------- Materials ----------
 const matWood = new THREE.MeshStandardMaterial({color:0x5d4430, roughness:.82});
 const matDarkWood = new THREE.MeshStandardMaterial({color:0x35281f, roughness:.88});
-const matFloor = new THREE.MeshStandardMaterial({color:0x756b58, roughness:1});
-const matGrass = new THREE.MeshStandardMaterial({color:0x5f715c, roughness:1});
-const matWall = new THREE.MeshStandardMaterial({color:0xddd8c8, roughness:.95});
+const matFloor = new THREE.MeshStandardMaterial({color:0x936342, roughness:.78});
+const matGrass = new THREE.MeshStandardMaterial({color:0x71875d, roughness:1});
+const matWall = new THREE.MeshStandardMaterial({color:0x34243e, roughness:.96});
+const matSoil = new THREE.MeshStandardMaterial({color:0x75604a, roughness:1});
+const matBamboo = new THREE.MeshStandardMaterial({color:0xa5a36b, roughness:.86});
+const matBambooDark = new THREE.MeshStandardMaterial({color:0x5b5d39, roughness:.92});
+const matForest = new THREE.MeshStandardMaterial({color:0x315b37, roughness:1});
+const matForestDark = new THREE.MeshStandardMaterial({color:0x4b6c4d, roughness:1});
+const matLeafLight = new THREE.MeshStandardMaterial({color:0x86a85c, roughness:1});
+const matLeafRed = new THREE.MeshStandardMaterial({color:0x8b4841, roughness:1});
 const matArrow = new THREE.MeshStandardMaterial({color:0xc8b48d, roughness:.65});
 const matFeather = new THREE.MeshStandardMaterial({color:0xeeeae0, roughness:.9, side:THREE.DoubleSide});
 const matSkin = new THREE.MeshStandardMaterial({color:0xc59272, roughness:.86});
@@ -249,6 +256,14 @@ grass.rotation.x = -Math.PI/2; grass.position.set(0,0,-12); grass.receiveShadow=
 const floor = new THREE.Mesh(new THREE.BoxGeometry(7.8,.12,5.8), matFloor);
 floor.position.set(0,.07,2.2); floor.receiveShadow=true; scene.add(floor);
 
+// Warm wooden shooting floor: narrow seams make the foreground read as a
+// dojo floor instead of a featureless platform.
+const floorSeamMaterial = new THREE.MeshStandardMaterial({color:0x5b3b2a,roughness:.88});
+for(let z=-.45; z<5.05; z+=.42){
+  const seam = new THREE.Mesh(new THREE.BoxGeometry(7.72,.008,.018), floorSeamMaterial);
+  seam.position.set(0,.136,z); scene.add(seam);
+}
+
 const back = new THREE.Mesh(new THREE.BoxGeometry(8,3.6,.16), matDarkWood);
 back.position.set(0,1.8,5.05); back.receiveShadow=true; scene.add(back);
 
@@ -259,17 +274,82 @@ for(let x=-3.5;x<=3.5;x+=1.75){
 const roof = new THREE.Mesh(new THREE.BoxGeometry(8.7,.16,3.2), matDarkWood);
 roof.position.set(0,3.65,3.4); roof.rotation.x=.02; scene.add(roof);
 
+const frontBeam = new THREE.Mesh(new THREE.BoxGeometry(8.55,.24,.22), matWood);
+frontBeam.position.set(0,3.06,2.12); frontBeam.castShadow=true; scene.add(frontBeam);
+for(const x of [-4.12,4.12]){
+  const column = new THREE.Mesh(new THREE.BoxGeometry(.18,3.1,.18), matWood);
+  column.position.set(x,1.55,2.12); column.castShadow=true; scene.add(column);
+}
+
 const lane = new THREE.Mesh(new THREE.PlaneGeometry(4.2,31.5), new THREE.MeshStandardMaterial({color:0x7c856f,roughness:1}));
 lane.rotation.x=-Math.PI/2; lane.position.set(0,.012,-12.4); scene.add(lane);
 
-const azuchi = new THREE.Mesh(new THREE.BoxGeometry(7,2.7,1.1), new THREE.MeshStandardMaterial({color:0x8e8167,roughness:1}));
-azuchi.position.set(0,1.35,-28.55); azuchi.rotation.x=-.04; azuchi.receiveShadow=true; scene.add(azuchi);
+function addBambooFence(x){
+  for(let z=-2.0; z>=-26.2; z-=5.2){
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.055,.068,.72,8), matBamboo);
+    post.position.set(x,.36,z); post.castShadow=true; scene.add(post);
+    const joint = new THREE.Mesh(new THREE.CylinderGeometry(.073,.073,.055,8), matBambooDark);
+    joint.position.set(x,.49,z); scene.add(joint);
+  }
+  for(const y of [.18,.43]){
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,24.8,8), matBamboo);
+    rail.rotation.x=Math.PI/2; rail.position.set(x,y,-14.1); rail.castShadow=true; scene.add(rail);
+  }
+}
+addBambooFence(-2.72);
+addBambooFence(2.72);
 
-const targetWall = new THREE.Mesh(new THREE.BoxGeometry(7.6,3.25,.18), matWall);
-targetWall.position.set(0,1.62,-29.18); scene.add(targetWall);
+const azuchi = new THREE.Mesh(new THREE.BoxGeometry(6.3,.82,1.35), matSoil);
+azuchi.position.set(0,.41,-28.62); azuchi.rotation.x=-.04; azuchi.receiveShadow=true; scene.add(azuchi);
 
-const eave = new THREE.Mesh(new THREE.BoxGeometry(8.1,.18,1.9),matDarkWood);
-eave.position.set(0,3.28,-28.55); scene.add(eave);
+const targetWall = new THREE.Mesh(new THREE.BoxGeometry(5.55,1.38,.12), matWall);
+targetWall.position.set(0,1.47,-28.76); scene.add(targetWall);
+
+const eave = new THREE.Mesh(new THREE.BoxGeometry(5.95,.20,1.35),matDarkWood);
+eave.position.set(0,2.28,-28.70); eave.castShadow=true; scene.add(eave);
+for(const x of [-2.72,2.72]){
+  const post = new THREE.Mesh(new THREE.BoxGeometry(.12,2.25,.12),matWood);
+  post.position.set(x,1.15,-28.70); post.castShadow=true; scene.add(post);
+}
+
+// A layered tree line keeps the far end of the dojo open and green like the
+// reference garden, while the purple curtain gives the mato a clear backdrop.
+const forestBackdrop = new THREE.Mesh(new THREE.BoxGeometry(80,50,.35), matForestDark);
+forestBackdrop.position.set(0,10,-31.4); scene.add(forestBackdrop);
+
+function addTree(x,z,scale,leafMaterial){
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.11,.17,1.9,7),matDarkWood);
+  trunk.position.y=.95; trunk.castShadow=true; g.add(trunk);
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(1,9,7),leafMaterial);
+  crown.position.set(0,2.05,0); crown.scale.set(1.15,1.05,.82); crown.castShadow=true; g.add(crown);
+  const crown2 = new THREE.Mesh(new THREE.SphereGeometry(.72,8,6),leafMaterial);
+  crown2.position.set(.45,2.62,.08); crown2.scale.set(1.0,.78,.75); crown2.castShadow=true; g.add(crown2);
+  g.position.set(x,0,z); g.scale.setScalar(scale); scene.add(g);
+}
+addTree(-7.4,-31.1,1.55,matForest);
+addTree(-5.2,-32.3,1.05,matLeafLight);
+addTree(6.9,-31.5,1.45,matForest);
+addTree(5.0,-32.7,1.00,matLeafLight);
+addTree(-9.2,-29.8,1.05,matLeafLight);
+addTree(9.0,-30.3,1.10,matForest);
+addTree(-4.1,-30.1,1.15,matLeafLight);
+addTree(4.2,-30.2,1.18,matForest);
+addTree(-8.3,-33.0,1.30,matForest);
+addTree(8.4,-33.2,1.28,matLeafLight);
+
+function addShrub(x,z,scale,material){
+  const g=new THREE.Group();
+  for(const p of [[0,.28,0],[-.28,.22,.03],[.25,.23,.02],[0,.46,.04]]){
+    const leaf=new THREE.Mesh(new THREE.SphereGeometry(.26,8,6),material);
+    leaf.position.set(p[0],p[1],p[2]); leaf.scale.set(1,.82,1); leaf.castShadow=true; g.add(leaf);
+  }
+  g.position.set(x,0,z); g.scale.setScalar(scale); scene.add(g);
+}
+addShrub(-3.45,-4.8,1.15,matLeafRed);
+addShrub(3.45,-7.0,1.00,matLeafLight);
+addShrub(-3.55,-16.0,.82,matLeafLight);
+addShrub(3.55,-20.0,.90,matLeafRed);
 
 // ---------- Target ----------
 const TARGET_Z = -27.92;
