@@ -27,6 +27,28 @@
     transition:opacity .18s ease;
   }
   #hud{position:fixed;inset:0;z-index:2;pointer-events:none;user-select:none}
+  #audioGate{
+    position:fixed;inset:0;z-index:20;display:none;place-items:center;
+    padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+    background:rgba(10,13,12,.62);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)
+  }
+  #audioGate.is-visible{display:grid}
+  .audioGateCard{
+    width:min(360px,calc(100vw - 40px));padding:28px 24px;text-align:center;
+    border:1px solid rgba(255,255,255,.2);border-radius:18px;
+    background:rgba(20,24,22,.92);box-shadow:0 24px 80px rgba(0,0,0,.42)
+  }
+  #audioGateTitle{
+    font-family:"Yu Mincho","Hiragino Mincho ProN",serif;
+    font-size:clamp(23px,6vw,34px);letter-spacing:.16em
+  }
+  #audioGateButton{
+    margin-top:22px;border:1px solid rgba(255,255,255,.3);border-radius:999px;
+    background:rgba(255,255,255,.07);color:var(--ink);font:inherit;font-size:14px;
+    letter-spacing:.14em;padding:14px 28px;cursor:pointer;touch-action:manipulation
+  }
+  #audioGateButton:disabled{opacity:.58;cursor:wait}
+  #audioGateNote{margin-top:14px;font-size:11px;line-height:1.6;letter-spacing:.08em;color:#bdb8ae}
   .brand{
     position:absolute;top:max(18px,env(safe-area-inset-top));left:max(20px,env(safe-area-inset-left));
     letter-spacing:.18em;font-weight:650;font-size:13px;text-shadow:0 1px 12px #000
@@ -176,6 +198,13 @@
 <div id="focusLens" aria-hidden="true"></div>
 <audio id="hitAudio" src="./tekichu.mp3" preload="auto"></audio>
 <audio id="releaseAudio" src="./hanare.mp3" preload="auto"></audio>
+<div id="audioGate" role="dialog" aria-modal="true" aria-labelledby="audioGateTitle">
+  <div class="audioGateCard">
+    <div id="audioGateTitle">弓道を始める</div>
+    <button id="audioGateButton" type="button">タップして開始</button>
+    <div id="audioGateNote">iPhone / iPadでは、音声を有効にするため最初に一度だけタップしてください。</div>
+  </div>
+</div>
 <div id="hud">
   <div class="brand">KYUDO <small>近的 28m / 36cm 霞的 — 狙い幅・散り調整版</small></div>
   <div id="shots">
@@ -1063,6 +1092,11 @@ const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
 const releaseAudio = document.querySelector('#releaseAudio');
 releaseAudio.volume = .5;
+const audioGate = document.querySelector('#audioGate');
+const audioGateButton = document.querySelector('#audioGateButton');
+const isAppleTouchDevice = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1) ||
+  new URLSearchParams(location.search).has('audio-gate-test');
 const audioDataPromises = {
   hit: fetch('./tekichu.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null),
   release: fetch('./hanare.mp3').then(r=>r.ok ? r.arrayBuffer() : null).catch(()=>null)
@@ -1078,7 +1112,25 @@ function preloadAudioBuffers(){
   return audioBufferLoadPromise;
 }
 function unlockAudioForGesture(){
-  ensureAudio();
+  const resumePromise=ensureAudio();
+
+  // WebKit only unlocks its audio session from an explicit user gesture.
+  // Starting a one-frame, effectively silent buffer in that same event makes
+  // the first real sound eligible without playing either game effect early.
+  const unlockBuffer=audioCtx.createBuffer(1,1,audioCtx.sampleRate);
+  unlockBuffer.getChannelData(0)[0]=.00001;
+  const unlockSource=audioCtx.createBufferSource();
+  unlockSource.buffer=unlockBuffer;
+  unlockSource.connect(audioCtx.destination);
+  unlockSource.start(audioCtx.currentTime);
+
+  return Promise.all([resumePromise,preloadAudioBuffers()]).then(()=>{
+    const clockStart=audioCtx.currentTime;
+    return new Promise(resolve=>setTimeout(()=>{
+      const clockRunning=audioCtx.currentTime>clockStart+.005;
+      resolve(audioCtx.state==='running' && clockRunning && !!hitBuffer && !!releaseBuffer);
+    },140));
+  });
 }
 function playBufferedSound(buffer, fallback, gain){
   ensureAudio();
@@ -1104,9 +1156,26 @@ function playReleaseSound(){
 }
 function ensureAudio(){
   if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+  const resumePromise = audioCtx.state==='running'
+    ? Promise.resolve()
+    : audioCtx.resume().catch(()=>{});
   preloadAudioBuffers();
+  return resumePromise;
 }
+
+if(isAppleTouchDevice) audioGate.classList.add('is-visible');
+audioGateButton.addEventListener('click', async ()=>{
+  audioGateButton.disabled=true;
+  audioGateButton.textContent='音声を準備しています…';
+  const ready=await unlockAudioForGesture();
+  if(ready){
+    audioGate.classList.remove('is-visible');
+    audioGateButton.textContent='タップして開始';
+  }else{
+    audioGateButton.disabled=false;
+    audioGateButton.textContent='もう一度タップ';
+  }
+});
 function burstNoise(duration=.08, gain=.14, filterFreq=900){
   ensureAudio();
   const n=Math.floor(audioCtx.sampleRate*duration);
