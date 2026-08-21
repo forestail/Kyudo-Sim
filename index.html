@@ -564,6 +564,82 @@ function makeFingerSegment(material, radius, length){
   return m;
 }
 
+function makeHandSegment(material, a, b, radius){
+  const d=b.clone().sub(a);
+  const m=new THREE.Mesh(
+    new THREE.CapsuleGeometry(radius,Math.max(.004,d.length()-radius*2),6,12),
+    material
+  );
+  m.position.copy(a).add(b).multiplyScalar(.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
+  m.castShadow=true;
+  return m;
+}
+
+function createBowHand(material){
+  const g=new THREE.Group();
+
+  // A flattened capsule forms the back of the left hand. From the archer's
+  // viewpoint this reads as a compact fist instead of a round skin-coloured
+  // ball sitting on the end of the sleeve.
+  const backOfHand=new THREE.Mesh(
+    new THREE.CapsuleGeometry(.052,.070,8,18),
+    material
+  );
+  backOfHand.rotation.x=Math.PI/2;
+  backOfHand.scale.set(1.02,1,.58);
+  backOfHand.position.set(.002,.002,-.012);
+  backOfHand.castShadow=true;
+  g.add(backOfHand);
+
+  // Taper the skin into the sleeve so the wrist and fist remain one form.
+  const wrist=new THREE.Mesh(new THREE.CapsuleGeometry(.040,.040,6,14),material);
+  wrist.rotation.x=Math.PI/2;
+  wrist.scale.set(.96,1,.62);
+  wrist.position.set(-.002,0,.072);
+  wrist.castShadow=true;
+  g.add(wrist);
+
+  // Four fingers leave the palm together, wrap around the right side of the
+  // bow grip, then curl back toward the hand. Their joints overlap slightly so
+  // they read as a grip rather than detached beads.
+  const fingerYs=[.030,.010,-.012,-.033];
+  const fingerReach=[1.00,1.04,1.00,.88];
+  for(let i=0;i<4;i++){
+    const y=fingerYs[i];
+    const reach=fingerReach[i];
+    const a=new THREE.Vector3(.014,y,-.060+i*.004);
+    const b=new THREE.Vector3(.050*reach,y-.001,-.073+i*.005);
+    const c=new THREE.Vector3(.066*reach,y-.005,-.043+i*.005);
+    const d=new THREE.Vector3(.056*reach,y-.009,-.018+i*.004);
+    g.add(
+      makeHandSegment(material,a,b,.0118-i*.0005),
+      makeHandSegment(material,b,c,.0108-i*.0005),
+      makeHandSegment(material,c,d,.0096-i*.0005)
+    );
+  }
+
+  // The thumb lies above the wrapped fingers, as seen from the left shoulder.
+  const thumbA=new THREE.Vector3(.014,.034,-.008);
+  const thumbB=new THREE.Vector3(.047,.040,-.052);
+  const thumbC=new THREE.Vector3(.061,.028,-.086);
+  g.add(
+    makeHandSegment(material,thumbA,thumbB,.014),
+    makeHandSegment(material,thumbB,thumbC,.0115)
+  );
+
+  const nailMat=new THREE.MeshStandardMaterial({
+    color:0xe1b7a3,roughness:.58,metalness:0
+  });
+  const nail=new THREE.Mesh(new THREE.SphereGeometry(.009,14,8),nailMat);
+  nail.scale.set(.72,.34,1.05);
+  nail.position.set(.058,.030,-.079);
+  nail.castShadow=true;
+  g.add(nail);
+
+  return g;
+}
+
 function createHand(material, right=false){
   const g = new THREE.Group();
 
@@ -649,7 +725,7 @@ const leftForeSleeve = makeSegment(matGi);
 const rightUpperSleeve = makeSegment(matGiShadow);
 const rightForeSleeve = makeSegment(matGi);
 
-const leftHand = createHand(matSkin,false);
+const leftHand = createBowHand(matSkin);
 const rightHand = createHand(matYugake,true);
 shooter.add(leftHand,rightHand);
 
@@ -660,8 +736,6 @@ const rightElbowBase = new THREE.Vector3(.74,1.00,3.61);
 
 function updateShooterPose(poseDraw, rightFollow, handReturn){
   const leftWrist = bowRoot.position.clone().add(new THREE.Vector3(-.005,.015,.055));
-  leftHand.position.copy(leftWrist);
-  leftHand.rotation.set(.08,-.08,-.08);
 
   const armPoseDraw = releaseHandBase ? (1-handReturn) : poseDraw;
   const p=drawPoseEase(armPoseDraw);
@@ -670,6 +744,13 @@ function updateShooterPose(poseDraw, rightFollow, handReturn){
     new THREE.Vector3(-.31,1.66,2.92),
     1-p
   );
+  const leftForearmDir=leftWrist.clone().sub(leftElbowPose).normalize();
+  leftHand.position.copy(leftWrist).addScaledVector(leftForearmDir,.052);
+  leftHand.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0,0,-1),
+    leftForearmDir
+  );
+  leftHand.rotateZ(-.08);
   placeSegment(leftUpperSleeve,leftShoulderPose,leftElbowPose,.105);
   placeSegment(leftForeSleeve,leftElbowPose,leftWrist,.078);
 
