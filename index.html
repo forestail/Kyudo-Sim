@@ -940,6 +940,8 @@ function updateShooterPose(poseDraw, rightFollow, handReturn){
 
 // ---------- Arrow ----------
 const ARROW_LEN = 1.72;
+// The metal arrowhead is only as wide as the shaft and extends a short
+// distance beyond it, like a real kyudo arrow rather than a large cone.
 const TIP_EXTRA = .035;
 
 function createArrow(){
@@ -955,11 +957,13 @@ function createArrow(){
   g.add(shaft);
 
   const tip = new THREE.Mesh(
-    new THREE.ConeGeometry(.017,.07,10),
-    new THREE.MeshStandardMaterial({color:0x43443f,roughness:.38,metalness:.65})
+    new THREE.ConeGeometry(.006,TIP_EXTRA,8),
+    new THREE.MeshStandardMaterial({color:0x43443f,roughness:.28,metalness:.82})
   );
   tip.rotation.x = -Math.PI/2;
-  tip.position.z = -ARROW_LEN - TIP_EXTRA;
+  // ConeGeometry's tip is half its height beyond the center, so place the
+  // center halfway past the shaft and keep arrowTipPos() physically exact.
+  tip.position.z = -ARROW_LEN - TIP_EXTRA * 0.5;
   g.add(tip);
 
   // Kyudo arrow feathers: three distinct feather-shaped vanes close to the nock.
