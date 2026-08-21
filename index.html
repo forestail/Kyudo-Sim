@@ -1057,16 +1057,39 @@ function flashCall(main, sub=''){
 
 // ---------- Audio ----------
 let audioCtx=null;
+let mediaAudioUnlocked=false;
 const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
 const releaseAudio = document.querySelector('#releaseAudio');
 releaseAudio.volume = .5;
+function primeMediaAudio(audio){
+  const wasMuted = audio.muted;
+  audio.muted = true;
+  audio.currentTime = 0;
+  const playPromise = audio.play();
+  const reset = ()=>{
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = wasMuted;
+  };
+  if(playPromise?.then) playPromise.then(reset).catch(()=>{ audio.muted=wasMuted; });
+  else reset();
+}
+function unlockAudioForGesture(){
+  ensureAudio();
+  if(mediaAudioUnlocked) return;
+  mediaAudioUnlocked=true;
+  primeMediaAudio(hitAudio);
+  primeMediaAudio(releaseAudio);
+}
 function playHitSound(){
+  hitAudio.muted = false;
   hitAudio.currentTime = 0;
   const playPromise = hitAudio.play();
   if(playPromise?.catch) playPromise.catch(()=>{});
 }
 function playReleaseSound(){
+  releaseAudio.muted = false;
   releaseAudio.currentTime = 0;
   const playPromise = releaseAudio.play();
   if(playPromise?.catch) playPromise.catch(()=>{});
@@ -1210,7 +1233,7 @@ function cameraSway(time){
 // ---------- Input ----------
 renderer.domElement.addEventListener('pointerdown', e=>{
   if(!canShoot || shotCount>=4 || poseRecover.active) return;
-  ensureAudio();
+  unlockAudioForGesture();
   pointerDown=true;
   startY=e.clientY; startX=e.clientX; lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
   drawStartedAt=performance.now();
