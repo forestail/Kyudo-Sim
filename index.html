@@ -600,42 +600,28 @@ function createBowHand(material){
   wrist.castShadow=true;
   g.add(wrist);
 
-  // Four fingers leave the palm together, wrap around the right side of the
-  // bow grip, then curl back toward the hand. Their joints overlap slightly so
-  // they read as a grip rather than detached beads.
+  // Exactly four seamless finger shapes wrap around the right side of the bow:
+  // index, middle, ring and little finger. A single capsule per digit prevents
+  // phalanges from being mistaken for extra fingers.
+  const fingerNames=['index','middle','ring','little'];
   const fingerYs=[.030,.010,-.012,-.033];
   const fingerReach=[1.00,1.04,1.00,.88];
   for(let i=0;i<4;i++){
     const y=fingerYs[i];
     const reach=fingerReach[i];
     const a=new THREE.Vector3(.014,y,-.060+i*.004);
-    const b=new THREE.Vector3(.050*reach,y-.001,-.073+i*.005);
-    const c=new THREE.Vector3(.066*reach,y-.005,-.043+i*.005);
     const d=new THREE.Vector3(.056*reach,y-.009,-.018+i*.004);
-    g.add(
-      makeHandSegment(material,a,b,.0118-i*.0005),
-      makeHandSegment(material,b,c,.0108-i*.0005),
-      makeHandSegment(material,c,d,.0096-i*.0005)
-    );
+    const finger=makeHandSegment(material,a,d,.0116-i*.0005);
+    finger.name=`left-${fingerNames[i]}-finger`;
+    g.add(finger);
   }
 
-  // The thumb lies above the wrapped fingers, as seen from the left shoulder.
+  // The fifth and final digit is one continuous thumb above the four fingers.
   const thumbA=new THREE.Vector3(.014,.034,-.008);
-  const thumbB=new THREE.Vector3(.047,.040,-.052);
   const thumbC=new THREE.Vector3(.061,.028,-.086);
-  g.add(
-    makeHandSegment(material,thumbA,thumbB,.014),
-    makeHandSegment(material,thumbB,thumbC,.0115)
-  );
-
-  const nailMat=new THREE.MeshStandardMaterial({
-    color:0xe1b7a3,roughness:.58,metalness:0
-  });
-  const nail=new THREE.Mesh(new THREE.SphereGeometry(.009,14,8),nailMat);
-  nail.scale.set(.72,.34,1.05);
-  nail.position.set(.058,.030,-.079);
-  nail.castShadow=true;
-  g.add(nail);
+  const thumb=makeHandSegment(material,thumbA,thumbC,.0132);
+  thumb.name='left-thumb';
+  g.add(thumb);
 
   return g;
 }
