@@ -577,7 +577,8 @@ function createHand(material, right=false){
 
   const thenar = new THREE.Mesh(new THREE.SphereGeometry(.040,18,14),material);
   thenar.scale.set(.95,.75,1.10);
-  thenar.position.set(right ? .045 : -.045,-.010,.018);
+  // The bow hand is the left hand: its thumb pad belongs on screen-right.
+  thenar.position.set(.045,-.010,.018);
   thenar.castShadow=true;
   g.add(thenar);
 
@@ -617,15 +618,15 @@ function createHand(material, right=false){
 
   // Thumb: two articulated pieces, extended along the bow/arrow side.
   const thumbBase=makeFingerSegment(material,.014,.050);
-  thumbBase.rotation.z=right ? -.92 : .92;
+  thumbBase.rotation.z=-.92;
   thumbBase.rotation.x=.20;
-  thumbBase.position.set(right?.054:-.054,-.005,.000);
+  thumbBase.position.set(.054,-.005,.000);
   g.add(thumbBase);
 
   const thumbTip=makeFingerSegment(material,.011,.040);
-  thumbTip.rotation.z=right ? -.72 : .72;
+  thumbTip.rotation.z=-.72;
   thumbTip.rotation.x=.38;
-  thumbTip.position.set(right?.083:-.083,-.018,-.020);
+  thumbTip.position.set(.083,-.018,-.020);
   g.add(thumbTip);
 
   // A subtle nail is visible mainly on the left bow hand.
@@ -635,7 +636,7 @@ function createHand(material, right=false){
     });
     const nail=new THREE.Mesh(new THREE.SphereGeometry(.010,14,8),nailMat);
     nail.scale.set(.72,.32,1.08);
-    nail.position.set(-.095,-.012,-.035);
+    nail.position.set(.095,-.012,-.035);
     nail.castShadow=true;
     g.add(nail);
   }
