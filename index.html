@@ -1096,7 +1096,7 @@ function thunk(hit){
 
 // ---------- State ----------
 let pointerDown=false, startY=0, startX=0, lastX=0, lastY=0, lastMoveT=0;
-let fullDrawReached=false, fullDrawX=0, fullDrawY=0;
+let fullDrawReached=false, fullDrawX=0, fullDrawY=0, drawStartedAt=0;
 let draw=0, poseDraw=0, holdStable=0, shotCount=0, hitCount=0;
 let aimX=0, aimY=0, lockedAimX=0, lockedAimY=0;
 let canShoot=true, impacts=[], resultDistances=[];
@@ -1200,6 +1200,7 @@ renderer.domElement.addEventListener('pointerdown', e=>{
   ensureAudio();
   pointerDown=true;
   startY=e.clientY; startX=e.clientX; lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
+  drawStartedAt=performance.now();
   fullDrawReached=false; fullDrawX=e.clientX; fullDrawY=e.clientY;
   draw=0; poseDraw=0; holdStable=0; yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null;
   bowRoot.rotation.set(0,0,0);
@@ -1460,7 +1461,7 @@ function resetGame(){
   for(const p of particles) scene.remove(p);
   for(const r of impactRings) scene.remove(r);
   particles=[]; impactRings=[]; flying=[]; impacts=[]; shotCount=0; hitCount=0; resultDistances=[];
-  draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false; fullDrawReached=false;
+  draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false; fullDrawReached=false; drawStartedAt=0;
   yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null; releaseKick=0; targetPulse=0;
   rightHand.visible=true;
   rightForeSleeve.visible=true;
@@ -1504,17 +1505,11 @@ function animate(time){
 
     if(fullDrawReached){
       if(performance.now()-lastMoveT>85) holdStable=Math.min(2.2,holdStable+dt);
-      const p=THREE.MathUtils.smoothstep(
-        holdStable,
-        KAI_STABLE_START,
-        KAI_STABLE_FULL
-      );
-      elStatusMain.textContent='会 — 照準';
+      const kaiReady = performance.now()-drawStartedAt >= 4000;
+      elStatusMain.textContent=kaiReady ? '会' : '引分け';
       elStatusSub.textContent='焦点を合わせて、静かに離す';
       elDrawLabel.textContent=
-        p>.90 ? '会 — 照準安定' :
-        p>.55 ? '会 — 照準' :
-                '引分け完了';
+        kaiReady ? '会' : '引分け完了';
     }else{
       elStatusMain.textContent='引分け';
       elStatusSub.textContent=draw>.72?'もう少し下へ引き切る':'下へ引く';
