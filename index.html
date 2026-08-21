@@ -175,6 +175,7 @@
 <body>
 <div id="focusLens" aria-hidden="true"></div>
 <audio id="hitAudio" src="./tekichu.mp3" preload="auto"></audio>
+<audio id="releaseAudio" src="./hanare.mp3" preload="auto"></audio>
 <div id="hud">
   <div class="brand">KYUDO <small>近的 28m / 36cm 霞的 — 狙い幅・散り調整版</small></div>
   <div id="shots">
@@ -1058,9 +1059,16 @@ function flashCall(main, sub=''){
 let audioCtx=null;
 const hitAudio = document.querySelector('#hitAudio');
 hitAudio.volume = .92;
+const releaseAudio = document.querySelector('#releaseAudio');
+releaseAudio.volume = .92;
 function playHitSound(){
   hitAudio.currentTime = 0;
   const playPromise = hitAudio.play();
+  if(playPromise?.catch) playPromise.catch(()=>{});
+}
+function playReleaseSound(){
+  releaseAudio.currentTime = 0;
+  const playPromise = releaseAudio.play();
   if(playPromise?.catch) playPromise.catch(()=>{});
 }
 function ensureAudio(){
@@ -1340,6 +1348,7 @@ function fire(){
   releaseAnim={active:true,t:0,drawAtRelease:releaseDraw};
   poseRecover.active=false;
   releaseKick=1;
+  playReleaseSound();
   twang();
   setTimeout(yugaeriWhoosh,46);
 
