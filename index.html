@@ -177,7 +177,7 @@
   </div>
   <div id="status"><div id="statusMain">一射目</div><div id="statusSub">的を見て、静かに引く</div></div>
   <div id="drawWrap"><div id="drawTrack"><div id="drawFill"></div></div><div id="drawLabel">引分け</div></div>
-  <div id="hint">打起しから引分ける。矢は基本的に的の周辺へ飛び、相対ドラッグでその中の細かな着弾位置を上下左右に調整します。会を長く安定させるほど矢所がまとまります。</div>
+  <div id="hint">上から下へドラッグして引き切り、そのまま上下左右へ動かして狙います。引き切った位置では上方、さらに下げるほど下方へ飛びます。矢先の向きを見て離してください。</div>
   <div id="flash"></div><div id="vignette"></div><div id="releaseMark"></div>
   <div id="centerCall"></div><div id="centerSub"></div>
   <div id="result"><div class="card">
@@ -508,15 +508,23 @@ function getAimPointWorld(ax=aimX, ay=aimY){
   return new THREE.Vector3(ax, TARGET_Y + ay, TARGET_Z);
 }
 
+function getBallisticLift(drawAmount, fromPoint){
+  const speed = 48 + drawAmount*7;
+  const distance = Math.abs(TARGET_Z - fromPoint.z);
+  const flightTime = distance / speed;
+  return .5 * 9.81 * flightTime * flightTime;
+}
+
 function getReadyArrowPose(drawAmount, ax=aimX, ay=aimY){
   const desiredNock = getNockWorld(drawAmount);
   const contact = getArrowContactWorld();
 
-  // Make orientation changes readable during aiming.  The actual shot uses a
-  // slightly gentler gain, but the preview arrow should clearly react to drag.
+  // Preview the same launch direction used by the actual shot.  Including the
+  // gravity compensation here makes the visible arrowhead agree with release.
+  const ballisticLift = getBallisticLift(drawAmount, contact);
   const visualAimPoint = getAimPointWorld(
     ax * AIM_VISUAL_GAIN_X,
-    ay * AIM_VISUAL_GAIN_Y
+    ay * AIM_VISUAL_GAIN_Y + ballisticLift
   );
 
   // The shaft should visibly point toward the mato while still resting on
@@ -995,44 +1003,33 @@ function thunk(hit){
 
 // ---------- State ----------
 let pointerDown=false, startY=0, startX=0, lastX=0, lastY=0, lastMoveT=0;
+let fullDrawReached=false, fullDrawX=0, fullDrawY=0;
 let draw=0, poseDraw=0, holdStable=0, shotCount=0, hitCount=0;
 let aimX=0, aimY=0, lockedAimX=0, lockedAimY=0;
 let canShoot=true, impacts=[], resultDistances=[];
 let flying=[], particles=[];
 let yugaeri=0, rightFollow=0, handReturn=0, releaseKick=0, targetPulse=0;
 let releaseHandBase=null;
-let releaseAnim={active:false,t:0,drawAtRelease:0,stability:0};
+let releaseAnim={active:false,t:0,drawAtRelease:0};
 let poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
 let statusToken=0;
-let missSpreadDebug = 0;
 const maxDrag = Math.min(innerHeight*.34, 270);
 const pullDir = new THREE.Vector2(0.14, 1).normalize();
 
 // Tuning constants for feel.
-// VISUAL gains affect how clearly the arrow orientation responds while aiming.
-// SHOT gains affect actual shot direction.
-// ASSIST reduces frustration by gently pulling near shots inward.
-const AIM_VISUAL_GAIN_X = 2.2;
-const AIM_VISUAL_GAIN_Y = 1.9;
+// Full draw is a second control phase.  The point where the draw first reaches
+// 100% becomes the aiming origin; moving from there maps directly to the
+// intended impact offset.  At the untouched origin the shot is deliberately
+// high, while pulling farther down passes through centre and then below it.
+const FULL_DRAW_UP_AIM = TARGET_R * 2.0;
+const AIM_DRAG_RANGE_X = 2.4;
+const AIM_DRAG_RANGE_Y = 2.8;
+const AIM_VISUAL_GAIN_X = 1.0;
+const AIM_VISUAL_GAIN_Y = 1.0;
+const AIM_LIMIT_X = 1.10;
+const AIM_LIMIT_Y = 1.00;
 
-// The actual shot direction is deliberately compressed.
-// The user is controlling the fine placement around the mato, not whether the
-// arrow flies somewhere far away from it.
-const AIM_SHOT_GAIN_X = 0.78;
-const AIM_SHOT_GAIN_Y = 0.72;
-
-// Maximum practical aim offset at the target plane.
-// Even a poor drag should still send the arrow near the mato.
-const AIM_LIMIT_X = TARGET_R * 1.15;
-const AIM_LIMIT_Y = TARGET_R * 1.05;
-
-// Near-target assist remains subtle, but now covers essentially the whole
-// practical aiming range.
-const MAGNET_START_R = TARGET_R * 1.45;
-const MAGNET_FULL_R = TARGET_R * 0.85;
-const MAGNET_MAX = 0.20;
-
-// Kai timing: staying calm longer sharply improves grouping up to this point.
+// Kai timing controls the steadiness feedback shown while aiming.
 const KAI_STABLE_START = 0.35;
 const KAI_STABLE_FULL = 1.85;
 
@@ -1081,15 +1078,16 @@ renderer.domElement.addEventListener('pointerdown', e=>{
   ensureAudio();
   pointerDown=true;
   startY=e.clientY; startX=e.clientX; lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
+  fullDrawReached=false; fullDrawX=e.clientX; fullDrawY=e.clientY;
   draw=0; poseDraw=0; holdStable=0; yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null;
   bowRoot.rotation.set(0,0,0);
   bowRoot.position.copy(bowPosePosition(0));
-  setAimFromPointer(e.clientX,e.clientY);
-  lockedAimX=aimX; lockedAimY=aimY;
+  aimX=0; aimY=FULL_DRAW_UP_AIM;
+  lockedAimX=0; lockedAimY=FULL_DRAW_UP_AIM;
   renderer.domElement.setPointerCapture?.(e.pointerId);
   elDrawWrap.style.opacity=1;
   elStatusMain.textContent='引分け';
-  elStatusSub.textContent='基準線からのずれで狙いを調整';
+  elStatusSub.textContent='まず下へ引き切る';
 });
 
 renderer.domElement.addEventListener('pointermove', e=>{
@@ -1098,35 +1096,42 @@ renderer.domElement.addEventListener('pointermove', e=>{
     return;
   }
 
-  const dragX = e.clientX - startX;
-  const dragY = Math.max(0, e.clientY - startY);
+  if(!fullDrawReached){
+    const dragX = e.clientX - startX;
+    const dragY = Math.max(0, e.clientY - startY);
 
-  // Project the drag vector onto the natural hikiwake direction.
-  // Pulling farther down/right increases draw.
-  const proj = Math.max(0, dragX * pullDir.x + dragY * pullDir.y);
-  draw = THREE.MathUtils.clamp(proj / maxDrag, 0, 1);
-  poseDraw = draw;
+    // Phase 1: only the pull direction controls draw amount.  The first event
+    // that reaches full draw becomes the exact neutral point for phase 2.
+    const proj = Math.max(0, dragX * pullDir.x + dragY * pullDir.y);
+    draw = THREE.MathUtils.clamp(proj / maxDrag, 0, 1);
+    poseDraw = draw;
 
-  // The deviation from that ideal pull line controls aiming.
-  // This makes the initial click a coarse aim point, and the relative
-  // pointer position during hikiwake a fine aim adjustment in both axes.
-  const idealX = pullDir.x * proj;
-  const idealY = pullDir.y * proj;
-  const offsetX = dragX - idealX;
-  const offsetY = dragY - idealY;
-
-  // Fine placement only: the drag changes where around the mato the arrow goes,
-  // but it should not be possible to send it far away with normal input.
-  lockedAimX = THREE.MathUtils.clamp(
-    aimX + offsetX / innerWidth * .72,
-    -AIM_LIMIT_X,
-     AIM_LIMIT_X
-  );
-  lockedAimY = THREE.MathUtils.clamp(
-    aimY - offsetY / innerHeight * .66,
-    -AIM_LIMIT_Y,
-     AIM_LIMIT_Y
-  );
+    if(draw>=1){
+      fullDrawReached=true;
+      fullDrawX=e.clientX;
+      fullDrawY=e.clientY;
+      lockedAimX=0;
+      lockedAimY=FULL_DRAW_UP_AIM;
+      lastMoveT=performance.now();
+    }
+  }else{
+    // Phase 2: keep the bow fully drawn and use displacement from the captured
+    // full-draw point as an unrestricted two-axis aiming control.
+    draw=1;
+    poseDraw=1;
+    const aimDragX = e.clientX - fullDrawX;
+    const aimDragY = e.clientY - fullDrawY;
+    lockedAimX = THREE.MathUtils.clamp(
+      aimDragX / innerWidth * AIM_DRAG_RANGE_X,
+      -AIM_LIMIT_X,
+       AIM_LIMIT_X
+    );
+    lockedAimY = THREE.MathUtils.clamp(
+      FULL_DRAW_UP_AIM - aimDragY / innerHeight * AIM_DRAG_RANGE_Y,
+      -AIM_LIMIT_Y,
+       AIM_LIMIT_Y
+    );
+  }
 
   const movement = Math.hypot(e.clientX-lastX,e.clientY-lastY);
   if(movement>2.2) holdStable=Math.max(0,holdStable-.08);
@@ -1166,86 +1171,29 @@ function fire(){
   readyArrow = null;
 
   const releaseDraw=draw;
-  const releaseHold=holdStable;
+  // Recompute from the final pointer coordinates so a fast last aiming motion
+  // cannot release before the next animation frame updates the mesh.
+  const releasePose = getReadyArrowPose(releaseDraw, lockedAimX, lockedAimY);
+  arrow.position.copy(releasePose.nock);
+  arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1), releasePose.dir);
 
   // Freeze the actual visible nock/right-hand position at full draw.
   // The bow/string returns forward after release, but the hand remains behind.
-  releaseHandBase = getReadyArrowPose(releaseDraw, lockedAimX, lockedAimY).nock.clone();
+  releaseHandBase = releasePose.nock.clone();
   handReturn = 0;
 
   flying.push(arrow);
 
   const nockStart=arrow.position.clone();
-  const startDir=arrowForward(arrow);
+  const startDir=releasePose.dir.clone();
   const tipStart=arrowTipPos(arrow);
 
   const speed = 48 + releaseDraw*7;
-  const distance = Math.abs(TARGET_Z - tipStart.z);
-  const t = distance / speed;
-  const ballisticLift = .5 * 9.81 * t * t;
 
-  // Kai stability is intentionally nonlinear:
-  // a rushed release is still playable, but holding a calm kai noticeably tightens the group.
-  const stability = THREE.MathUtils.smoothstep(
-    releaseHold,
-    KAI_STABLE_START,
-    KAI_STABLE_FULL
-  );
-
-  // Much tighter overall spread.
-  // Even a rushed/rough release should stay around the mato; a settled kai
-  // mainly decides whether the arrow lands toward the centre or edge.
-  const baseSpread = THREE.MathUtils.lerp(.012,.0014,stability);
-  const rawDrawPenalty = Math.max(0,.92-releaseDraw)*.022;
-  const drawPenalty = rawDrawPenalty * THREE.MathUtils.lerp(1.0,.38,stability);
-
-  const randn = ()=>{
-    const u=Math.max(1e-6,Math.random()), v=Math.random();
-    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
-  };
-
-  const errX = randn()*(baseSpread+drawPenalty);
-  const errY = randn()*(baseSpread+drawPenalty);
-  missSpreadDebug = baseSpread + drawPenalty;
-
-  const aimedX = THREE.MathUtils.clamp(
-    lockedAimX * AIM_SHOT_GAIN_X,
-    -AIM_LIMIT_X,
-     AIM_LIMIT_X
-  );
-  const aimedY = THREE.MathUtils.clamp(
-    lockedAimY * AIM_SHOT_GAIN_Y,
-    -AIM_LIMIT_Y,
-     AIM_LIMIT_Y
-  );
-
-  // Weak "magnet" only near the target.
-  // Outside MAGNET_START_R there is zero correction.
-  const aimDistance = Math.hypot(aimedX, aimedY);
-  let magnet = 0;
-  if(aimDistance < MAGNET_START_R){
-    const nearFactor = 1 - THREE.MathUtils.smoothstep(
-      aimDistance,
-      MAGNET_FULL_R,
-      MAGNET_START_R
-    );
-
-    // A settled kai earns a little more benefit from the same near-target assist,
-    // but even at full stability the correction remains subtle.
-    const kaiMagnetBonus = THREE.MathUtils.lerp(.82,1.0,stability);
-    magnet = MAGNET_MAX * nearFactor * kaiMagnetBonus;
-  }
-
-  const correctedX = aimedX * (1 - magnet);
-  const correctedY = aimedY * (1 - magnet);
-
-  const target = new THREE.Vector3(
-    correctedX + errX,
-    TARGET_Y + correctedY + ballisticLift + errY,
-    TARGET_Z
-  );
-
-  const vel = target.clone().sub(tipStart).normalize().multiplyScalar(speed);
+  // The launched arrow starts in the exact direction shown while aiming.
+  // Gravity bends the path only after release, so there is no hidden aim
+  // compression, magnet, or direction jump at the moment of hanare.
+  const vel = startDir.multiplyScalar(speed);
 
   Object.assign(arrow.userData, {
     isArrow: true,
@@ -1260,7 +1208,7 @@ function fire(){
   });
 
   shotCount++;
-  releaseAnim={active:true,t:0,drawAtRelease:releaseDraw,stability};
+  releaseAnim={active:true,t:0,drawAtRelease:releaseDraw};
   poseRecover.active=false;
   releaseKick=1;
   twang();
@@ -1324,9 +1272,12 @@ function resolveImpact(arrow, hitPos, incomingForward){
     elFlash.animate([{opacity:.85},{opacity:0}],{duration:430,easing:'ease-out'});
     spawnDust(hitPos,true);
   }else{
+    const vertical = dy>.05 ? '上' : dy<-.05 ? '下' : '';
+    const horizontal = dx>.05 ? '右' : dx<-.05 ? '左' : '';
+    const direction = `${vertical}${horizontal}` || '中央付近';
     elStatusMain.textContent='外れ';
-    elStatusSub.textContent='矢所を見て、次の一本へ';
-    flashCall('外れ', '次の一本へ');
+    elStatusSub.textContent=`矢所：${direction} — 次の一本へ`;
+    flashCall('外れ', `矢所：${direction}`);
     spawnDust(hitPos,false);
   }
   updateHUD(impacts, shotCount, canShoot, pointerDown);
@@ -1385,12 +1336,12 @@ function resetGame(){
   for(const p of particles) scene.remove(p);
   for(const r of impactRings) scene.remove(r);
   particles=[]; impactRings=[]; flying=[]; impacts=[]; shotCount=0; hitCount=0; resultDistances=[];
-  draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false;
+  draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false; fullDrawReached=false;
   yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null; releaseKick=0; targetPulse=0;
   rightHand.visible=true;
   rightForeSleeve.visible=true;
   rightUpperSleeve.visible=true;
-  releaseAnim={active:false,t:0,drawAtRelease:0,stability:0};
+  releaseAnim={active:false,t:0,drawAtRelease:0};
   poseRecover={active:false,t:0,startYugaeri:0,startRight:0};
   bowRoot.position.copy(bowPosePosition(0));
   bowRoot.rotation.set(0,0,0);
@@ -1426,25 +1377,24 @@ function animate(time){
     updateBowGeometry(drawForFlex);
     updateString(poseDraw, drawForFlex, lockedAimX, lockedAimY);
 
-    if(draw>.92){
+    if(fullDrawReached){
       if(performance.now()-lastMoveT>85) holdStable=Math.min(2.2,holdStable+dt);
       const p=THREE.MathUtils.smoothstep(
         holdStable,
         KAI_STABLE_START,
         KAI_STABLE_FULL
       );
-      elStatusMain.textContent=p>.55?'会':'引分け';
-      elStatusSub.textContent=
-        p>.90 ? '会が深まる — 矢所が最も安定' :
-        p>.55 ? '左右に伸び合い、静かに保つ' :
-                 '静かに保つ';
+      const verticalAim = lockedAimY>.14 ? '上' : lockedAimY<-.14 ? '下' : '中央';
+      const horizontalAim = lockedAimX>.14 ? '右' : lockedAimX<-.14 ? '左' : '';
+      elStatusMain.textContent='会 — 照準';
+      elStatusSub.textContent=`矢先：${verticalAim}${horizontalAim} — ドラッグしたまま離す`;
       elDrawLabel.textContent=
-        p>.90 ? '会 — 安定' :
-        p>.55 ? '会 — 離れを作らない' :
-                '引分け';
+        p>.90 ? '会 — 照準安定' :
+        p>.55 ? '会 — 照準' :
+                '引分け完了';
     }else{
       elStatusMain.textContent='引分け';
-      elStatusSub.textContent=draw>.72?'ドラッグで矢所を微調整':'下へ引きつつ的周辺へ合わせる';
+      elStatusSub.textContent=draw>.72?'もう少し下へ引き切る':'下へ引く';
       elDrawLabel.textContent='引分け';
     }
     elDrawFill.style.width=(draw*100).toFixed(1)+'%';
