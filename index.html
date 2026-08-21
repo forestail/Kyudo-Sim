@@ -1035,7 +1035,7 @@ function updateHUD(impacts, shotCount, canShoot, pointerDown){
     const e=document.querySelector('#s'+i);
     e.className='shot'+(impacts[i] ? (impacts[i].hit?' hit':' miss'):'');
   }
-  if(shotCount<4 && canShoot && !pointerDown){
+  if(shotCount<4 && canShoot && !pointerDown && !postShotHold){
     elStatusMain.textContent=ordinal(shotCount);
     elStatusSub.textContent='的を見て、静かに引く';
   }
@@ -1145,6 +1145,7 @@ let fullDrawReached=false, fullDrawX=0, fullDrawY=0, drawStartedAt=0;
 let draw=0, poseDraw=0, holdStable=0, shotCount=0, hitCount=0;
 let aimX=0, aimY=0, lockedAimX=0, lockedAimY=0;
 let canShoot=true, impacts=[], resultDistances=[];
+let postShotHold=false;
 let flying=[], particles=[];
 let yugaeri=0, rightFollow=0, handReturn=0, releaseKick=0, targetPulse=0;
 let releaseHandBase=null;
@@ -1243,6 +1244,7 @@ function cameraSway(time){
 renderer.domElement.addEventListener('pointerdown', e=>{
   if(!canShoot || shotCount>=4 || poseRecover.active) return;
   unlockAudioForGesture();
+  postShotHold=false;
   pointerDown=true;
   startY=e.clientY; startX=e.clientX; lastX=e.clientX; lastY=e.clientY; lastMoveT=performance.now();
   drawStartedAt=performance.now();
@@ -1332,6 +1334,7 @@ function fire(){
   canShoot=false;
   const arrow=readyArrow;
   if(!arrow) return;
+  postShotHold=true;
 
   // Detach immediately. From this instant onward this object is a fired arrow,
   // never a "ready" arrow. This is the core fix for the accumulated ghost arrows.
@@ -1397,7 +1400,7 @@ function fire(){
   setTimeout(()=>{
     if(token!==statusToken) return;
     if(!canShoot){
-      elStatusMain.textContent='残心';
+      elStatusMain.textContent='残身';
       elStatusSub.textContent='左右に伸びた形を保つ';
     }
   },135);
@@ -1434,10 +1437,10 @@ function resolveImpact(arrow, hitPos, incomingForward){
   statusToken++;
 
   spawnImpactRing(hitPos, hit);
+  elStatusMain.textContent='残身';
+  elStatusSub.textContent='左右に伸びた形を保つ';
   if(hit){
     addMiniMatoMark(dx,dy);
-    elStatusMain.textContent='的中';
-    elStatusSub.textContent=`中心から ${Math.round(r*1000)} mm`;
     flashCall('的中', `中心から ${Math.round(r*1000)} mm`);
     elFlash.animate([{opacity:.85},{opacity:0}],{duration:430,easing:'ease-out'});
     spawnDust(hitPos,true);
@@ -1445,8 +1448,6 @@ function resolveImpact(arrow, hitPos, incomingForward){
     const vertical = dy>.05 ? '上' : dy<-.05 ? '下' : '';
     const horizontal = dx>.05 ? '右' : dx<-.05 ? '左' : '';
     const direction = `${vertical}${horizontal}` || '中央付近';
-    elStatusMain.textContent='外れ';
-    elStatusSub.textContent=`矢所：${direction} — 次の一本へ`;
     flashCall('外れ', `矢所：${direction}`);
     spawnDust(hitPos,false);
   }
@@ -1508,6 +1509,7 @@ function resetGame(){
   for(const r of impactRings) scene.remove(r);
   particles=[]; impactRings=[]; flying=[]; impacts=[]; shotCount=0; hitCount=0; resultDistances=[];
   draw=0; poseDraw=0; holdStable=0; canShoot=true; pointerDown=false; fullDrawReached=false; drawStartedAt=0;
+  postShotHold=false;
   yugaeri=0; rightFollow=0; handReturn=0; releaseHandBase=null; releaseKick=0; targetPulse=0;
   rightHand.visible=true;
   rightForeSleeve.visible=true;
